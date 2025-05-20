@@ -7,9 +7,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node --loader ts-node/esm src/index.ts",
     "build": "tsc",
-    "lint": "eslint . --ext .ts",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "start": "npm run build && node dist/index.js",
     "clean": "rimraf dist"
   },
   "dependencies": {

@@ -1,37 +1,55 @@
-import { TonApiService } from '../services/tonApiService.js';
-import { CsvService } from '../services/csvService.js';
-import { StateService } from '../services/stateService.js';
+import { TonApiService } from "../services/tonApiService.js";
+import { CsvService } from "../services/csvService.js";
+import { StateService } from "../services/stateService.js";
 
 export class Processor {
-  constructor(
-    private api = new TonApiService(),
-    private csv = new CsvService(),
-    private state = new StateService()
-  ) {}
+  private api = new TonApiService();
+  private csv = new CsvService();
+  private state = new StateService();
 
   async run() {
-    // 1) Load last processed LT
-    const lastLt = await this.state.getLastLt();
+    console.log("[PROC] ▶️  Processor start");
 
-    // 2) Fetch all traces (or only those newer than lastLt)
+    // load last LT
+    const lastLt = await this.state.getLastLt();
+    console.log(`[PROC] 🔖  Last saved LT: ${lastLt ?? "none"}`);
+
+    // fetch all traces (via tx→traces)
+    console.log("[PROC] ⏳  Fetching all traces from API…");
     let traces = await this.api.fetchAllTraces();
+
+    // filter only new ones if we have a checkpoint
     if (lastLt) {
-      traces = traces.filter(t => BigInt(t.start_lt) > BigInt(lastLt));
+      traces = traces.filter((t) => BigInt(t.start_lt) > BigInt(lastLt));
+      console.log(`[PROC] 🔍  ${traces.length} traces newer than LT=${lastLt}`);
+    } else {
+      console.log(
+        `[PROC] 🔍  No previous cursor—processing all ${traces.length} traces`
+      );
     }
 
-    if (traces.length === 0) {
-      console.log('No new traces found');
+    if (!traces.length) {
+      console.log("[PROC] 💤  No new traces to process. Exiting.");
       return;
     }
 
-    // 3) Map & CSV
-    const rows = traces.map(t => this.api.mapTraceToLotteryTx(t));
+    // map → CSV rows
+    console.log("[PROC] 🔨  Mapping traces → CSV rows");
+    const rows = traces.map((t) => this.api.mapTraceToLotteryTx(t));
+
+    // append to CSV
+    console.log(`[PROC] 💾  Appending ${rows.length} rows to CSV`);
     await this.csv.append(rows);
 
-    // 4) Persist highest LT
-    const maxLt = rows.reduce((max, r) => (BigInt(r.lt) > BigInt(max) ? r.lt : max), rows[0].lt);
+    // persist the highest LT for next run
+    const maxLt = rows
+      .map((r) => BigInt(r.lt))
+      .reduce((a, b) => (a > b ? a : b), BigInt(rows[0].lt))
+      .toString();
+
+    console.log(`[PROC] 💾  Saving new cursor LT = ${maxLt}`);
     await this.state.saveLastLt(maxLt);
 
-    console.log(`Appended ${rows.length} rows; new cursor LT=${maxLt}`);
+    console.log("[PROC] 🎉  Done.");
   }
 }
