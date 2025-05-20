@@ -1,0 +1,39 @@
+{
+  "name": "ton-lottery-parser",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc",
+    "lint": "eslint . --ext .ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@ton/core": "^0.60.1",
+    "@ton/ton": "^15.2.1",
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
+    "papaparse": "^5.5.3"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.16",
+    "@types/node": "^22.15.20",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "rimraf": "^5.0.10"
+  },
+  "keywords": [
+    "ton",
+    "lottery",
+    "parser",
+    "typescript",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Parses TON lottery contract transactions into CSV"
+}
