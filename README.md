@@ -1,0 +1,1 @@
+# ton-lottery-parser
