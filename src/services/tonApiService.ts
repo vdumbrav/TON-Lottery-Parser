@@ -1,6 +1,6 @@
 import axios from "axios";
 import { CONFIG } from "../config/config.js";
-import { RawTrace, TraceAction, LotteryTx } from "../types/index.js";
+import { RawTrace, LotteryTx } from "../types/index.js";
 import { Address } from "@ton/core";
 
 export class TonApiService {
@@ -10,8 +10,7 @@ export class TonApiService {
   });
 
   /**
-   * Page through /traces by account using limit/offset.
-   * Returns all RawTrace entries for the contract.
+   * Fetches all traces from TON API for the configured contract address using pagination.
    */
   async fetchAllTraces(): Promise<RawTrace[]> {
     console.log(
@@ -32,9 +31,11 @@ export class TonApiService {
           include_actions: true,
         },
       });
+
       const traces = data.traces as RawTrace[];
       console.log(`  [API] ✅  Got ${traces.length} traces`);
       if (!traces.length) break;
+
       all.push(...traces);
       offset += CONFIG.pageLimit;
     }
@@ -44,36 +45,88 @@ export class TonApiService {
   }
 
   /**
-   * Convert one RawTrace into your CSV-friendly record.
+   * Converts a RawTrace object into a structured LotteryTx object.
+   * Returns null if required fields are missing or trace is irrelevant.
    */
-  mapTraceToLotteryTx(trace: RawTrace): LotteryTx {
-    // Locate the NFT mint action; if absent, skip this trace
+  mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
+    // Step 1: Locate the NFT mint action
     const mint = trace.actions.find((a) => a.type === "nft_mint");
-    if (!mint) {
-      // no mint, so we don’t produce a CSV row for this trace
-      return null as any;
+    if (
+      !mint ||
+      !mint.details.nft_item ||
+      !mint.details.nft_collection ||
+      !mint.details.nft_item_index
+    ) {
+      return null;
     }
 
-    // Convert on-chain raw addresses to user-friendly form
-    const participant = Address.parse(mint.details.owner).toString({
-      bounceable: true,
-      urlSafe: true,
-    });
+    // Step 2: Determine participant from the first transaction
+    const firstTxHash = trace.transactions_order?.[0];
+    const firstTx = firstTxHash ? trace.transactions[firstTxHash] : null;
+    const rawSource = firstTx?.in_msg?.source ?? firstTx?.account;
+    if (!rawSource) return null;
+
+    let participant: string;
+    try {
+      participant = Address.parse(rawSource).toString({
+        bounceable: true,
+        urlSafe: true,
+      });
+    } catch {
+      console.warn(`[API] ⚠️ Invalid participant address: ${rawSource}`);
+      return null;
+    }
+
+    // Step 3: Parse NFT data
     const nftAddress = Address.parse(mint.details.nft_item).toString({
       bounceable: true,
       urlSafe: true,
     });
+
     const collectionAddress = Address.parse(
       mint.details.nft_collection
-    ).toString({ bounceable: true, urlSafe: true });
+    ).toString({
+      bounceable: true,
+      urlSafe: true,
+    });
 
-    // nftIndex is always present on mint
     const nftIndex = Number(mint.details.nft_item_index);
 
-    // Detect win comment
-    const winAct = trace.actions.find((a) => a.details.comment);
-    const win = winAct?.details.comment;
-    const isWin = Boolean(win && win.startsWith("x"));
+    // Step 4: Determine win status and prize
+    const winAct = trace.actions.find((a) => a.details?.comment);
+    const winComment = winAct?.details?.comment ?? null;
+
+    let winAmount = 0;
+    if (winComment) {
+      switch (winComment) {
+        case "x1":
+          winAmount = 10;
+          break;
+        case "x2":
+          winAmount = 25;
+          break;
+        case "x3":
+          winAmount = 50;
+          break;
+        case "x4":
+          winAmount = 180;
+          break;
+        case "x5":
+          winAmount = 700;
+          break;
+        case "x6":
+          winAmount = 1800;
+          break;
+        case "x7":
+          winAmount = 10000;
+          break;
+        default:
+          winAmount = 0;
+          break;
+      }
+    }
+
+    const isWin = Boolean(winComment?.startsWith("x"));
 
     return {
       participant,
@@ -84,7 +137,8 @@ export class TonApiService {
       txHash: trace.external_hash,
       lt: trace.start_lt,
       isWin,
-      win,
+      winComment,
+      winAmount,
     };
   }
 }

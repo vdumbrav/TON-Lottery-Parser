@@ -1,11 +1,49 @@
-// Raw trace data from TonCenter v3
+export interface TraceActionDetails {
+  source?: string;
+  destination?: string;
+  value?: string;
+  comment?: string | null; // Can be null
+  owner?: string;
+  nft_item?: string;
+  nft_collection?: string;
+  nft_item_index?: string; // API returns as string, needs conversion
+  opcode?: string;
+  // ... other possible fields
+}
+
 export interface TraceAction {
+  trace_id: string;
   action_id: string;
-  type: string;
   start_lt: string;
   end_lt: string;
+  start_utime: number;
+  end_utime: number;
   transactions: string[];
-  details: Record<string, any>;
+  success: boolean;
+  type:
+    | "ton_transfer"
+    | "call_contract"
+    | "nft_mint"
+    | "contract_deploy"
+    | string;
+  details: TraceActionDetails;
+  trace_external_hash: string;
+}
+
+export interface InMsg {
+  hash: string;
+  source: string | null; // Can be null for external messages
+  destination: string;
+  // ... other InMsg fields
+}
+
+export interface Transaction {
+  account: string; // The account address this transaction belongs to
+  hash: string;
+  lt: string;
+  now: number;
+  in_msg: InMsg;
+  // ... other Transaction fields
 }
 
 export interface RawTrace {
@@ -17,18 +55,35 @@ export interface RawTrace {
   start_utime: number;
   end_lt: string;
   end_utime: number;
+  trace_info: {
+    trace_state: string;
+    messages: number;
+    transactions: number;
+    pending_messages: number;
+    classification_state: string;
+  };
+  is_incomplete: boolean;
   actions: TraceAction[];
-  trace: any;
+  trace: {
+    tx_hash: string;
+    in_msg_hash: string;
+    children: any[];
+  };
+  transactions_order: string[];
+  transactions: {
+    [tx_hash: string]: Transaction;
+  };
 }
 
 export interface LotteryTx {
-  participant: string; // friendly address
-  nftAddress?: string; // friendly NFT item address
-  collectionAddress?: string; // friendly collection address
-  nftIndex?: number;
+  participant: string;
+  nftAddress: string;
+  collectionAddress: string;
+  nftIndex: number;
   timestamp: number;
-  txHash: string;
+  txHash: string; // The external hash of the trace
   lt: string;
   isWin: boolean;
-  win?: string;
+  winComment: string | null;
+  winAmount: number;
 }
