@@ -47,33 +47,32 @@ export class TonApiService {
    * Convert one RawTrace into your CSV-friendly record.
    */
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx {
-    // find NFT mint
-    const mint = trace.actions.find((a: TraceAction) => a.type === "nft_mint");
+    // Locate the NFT mint action; if absent, skip this trace
+    const mint = trace.actions.find((a) => a.type === "nft_mint");
+    if (!mint) {
+      // no mint, so we don’t produce a CSV row for this trace
+      return null as any;
+    }
 
-    // convert addresses to friendly
-    const participant = mint?.details.owner
-      ? Address.parse(mint!.details.owner).toString({
-          bounceable: true,
-          urlSafe: true,
-        })
-      : "<unknown>";
-    const nftAddress = mint?.details.nft_item
-      ? Address.parse(mint!.details.nft_item).toString({
-          bounceable: true,
-          urlSafe: true,
-        })
-      : undefined;
-    const collectionAddress = mint?.details.nft_collection
-      ? Address.parse(mint!.details.nft_collection).toString({
-          bounceable: true,
-          urlSafe: true,
-        })
-      : undefined;
-    const nftIndex = mint ? Number(mint.details.nft_item_index) : undefined;
+    // Convert on-chain raw addresses to user-friendly form
+    const participant = Address.parse(mint.details.owner).toString({
+      bounceable: true,
+      urlSafe: true,
+    });
+    const nftAddress = Address.parse(mint.details.nft_item).toString({
+      bounceable: true,
+      urlSafe: true,
+    });
+    const collectionAddress = Address.parse(
+      mint.details.nft_collection
+    ).toString({ bounceable: true, urlSafe: true });
 
-    // comment holds win info
-    const commentAct = trace.actions.find((a) => a.details.comment);
-    const win = commentAct?.details.comment;
+    // nftIndex is always present on mint
+    const nftIndex = Number(mint.details.nft_item_index);
+
+    // Detect win comment
+    const winAct = trace.actions.find((a) => a.details.comment);
+    const win = winAct?.details.comment;
     const isWin = Boolean(win && win.startsWith("x"));
 
     return {
