@@ -1,7 +1,7 @@
-// src/services/tonApiService.ts
 import axios from "axios";
 import { CONFIG } from "../config/config.js";
 import { RawTrace, TraceAction, LotteryTx } from "../types/index.js";
+import { Address } from "@ton/core";
 
 export class TonApiService {
   private client = axios.create({
@@ -22,7 +22,7 @@ export class TonApiService {
 
     while (true) {
       console.log(
-        `  [API] 🔄  Fetch offset=${offset} limit=${CONFIG.pageLimit}`
+        `  [API] 🔄  Fetch offset=${offset}, limit=${CONFIG.pageLimit}`
       );
       const { data } = await this.client.get("/traces", {
         params: {
@@ -50,20 +50,31 @@ export class TonApiService {
     // find NFT mint
     const mint = trace.actions.find((a: TraceAction) => a.type === "nft_mint");
 
-    // extract fields
-    const participant = mint?.details.owner ?? "<unknown>";
-    const nftAddress = mint?.details.nft_item;
-    const collectionAddress = mint?.details.nft_collection;
+    // convert addresses to friendly
+    const participant = mint?.details.owner
+      ? Address.parse(mint!.details.owner).toString({
+          bounceable: true,
+          urlSafe: true,
+        })
+      : "<unknown>";
+    const nftAddress = mint?.details.nft_item
+      ? Address.parse(mint!.details.nft_item).toString({
+          bounceable: true,
+          urlSafe: true,
+        })
+      : undefined;
+    const collectionAddress = mint?.details.nft_collection
+      ? Address.parse(mint!.details.nft_collection).toString({
+          bounceable: true,
+          urlSafe: true,
+        })
+      : undefined;
     const nftIndex = mint ? Number(mint.details.nft_item_index) : undefined;
 
-    // comment & win flag
+    // comment holds win info
     const commentAct = trace.actions.find((a) => a.details.comment);
-    const comment = commentAct?.details.comment;
-    const isWin = Boolean(comment && comment.startsWith("x"));
-
-    // transfer value
-    const transfer = trace.actions.find((a) => a.type === "ton_transfer");
-    const value = transfer?.details.value ?? "0";
+    const win = commentAct?.details.comment;
+    const isWin = Boolean(win && win.startsWith("x"));
 
     return {
       participant,
@@ -74,8 +85,7 @@ export class TonApiService {
       txHash: trace.external_hash,
       lt: trace.start_lt,
       isWin,
-      comment,
-      value,
+      win,
     };
   }
 }

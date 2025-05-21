@@ -21,16 +21,14 @@ export interface RawTrace {
   trace: any;
 }
 
-// Your canonical tx model
 export interface LotteryTx {
-  participant: string;
-  nftAddress?: string;
-  collectionAddress?: string;
+  participant: string; // friendly address
+  nftAddress?: string; // friendly NFT item address
+  collectionAddress?: string; // friendly collection address
   nftIndex?: number;
   timestamp: number;
   txHash: string;
   lt: string;
   isWin: boolean;
-  comment?: string;
-  value: string;
+  win?: string;
 }

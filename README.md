@@ -1,25 +1,35 @@
 # TON Lottery Parser
 
-A TypeScript/Node.js CLI tool that fetches **all** transactions from a TON smart-contract lottery on Testnet, parses them for NFT mints and wins, and appends structured records into a CSV file for further analysis.
+A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces from a TON smart-contract lottery on Testnet, parses them for mint events and wins, and appends structured records into a CSV file for further analysis.
 
 ## Features
 
-* **Full history**: paginates through TON Center API to fetch every transaction since genesis or since last checkpoint.
-* **Incremental updates**: remembers last processed transaction (`lt`) and only fetches newer ones on each run.
-* **Structured output**: writes a CSV with fields like participant address, NFT address, collection address, token index, timestamp, tx hash, win flag, comment, and transferred value.
-* **Type safety**: written in TypeScript, with full typings for TON transaction payloads.
+* **Full history**: paginates through TON Center API (`/traces`) to fetch every trace since genesis or since last checkpoint.
+* **Incremental updates**: remembers last processed logical time (`lt`) and only fetches newer ones on each run.
+* **Structured output**: writes a CSV with fields:
+
+  * `participant` (user-friendly address)
+  * `nftAddress` (friendly NFT item address)
+  * `collectionAddress` (friendly collection address)
+  * `nftIndex`
+  * `timestamp` (Unix seconds)
+  * `txHash`
+  * `lt` (logical time)
+  * `isWin` (boolean flag)
+  * `win` (raw win comment text, e.g. `x3`)
+* **Type safety**: written in TypeScript, with full typings for TON traces.
 * **Modular architecture**:
 
-  * `services/tonApiService.ts` handles all HTTP calls to TON Center via Axios
-  * `core/processor.ts` coordinates fetch → parse → CSV append → state update
-  * `services/csvService.ts` uses PapaParse to build CSV rows
-  * `services/stateService.ts` tracks last processed logical time in `data/state.json`
-  * `utils/addressUtils.ts` normalizes raw TON addresses into user-friendly Base64 format
+  * **`services/tonApiService.ts`**: handles paged `/traces` calls and mapping raw traces → records
+  * **`core/processor.ts`**: coordinates fetch → parse → CSV append → state update
+  * **`services/csvService.ts`**: uses PapaParse to build and append CSV rows
+  * **`services/stateService.ts`**: tracks last processed `lt` in `data/state.json`
+  * **`config/config.ts`**: centralizes API endpoint, key, contract addresses, and pagination settings
 
 ## Prerequisites
 
-* **Node.js ≥ 22** (supports ES2022 modules and top‑level `await`)
-* **NPM or Yarn**
+* **Node.js ≥ 20** (for ES modules & top-level `await`)
+* **NPM** or **Yarn**
 * A **TON Center Testnet API key**
 
 ## Installation
@@ -27,10 +37,9 @@ A TypeScript/Node.js CLI tool that fetches **all** transactions from a TON smart
 1. Clone this repository:
 
    ```bash
-   git clone ...
+   git clone <repo-url>
    cd ton-lottery-parser
    ```
-
 2. Install dependencies:
 
    ```bash
@@ -38,30 +47,18 @@ A TypeScript/Node.js CLI tool that fetches **all** transactions from a TON smart
    # or
    yarn install
    ```
-
 3. Create a `.env` file in the project root:
 
-   ```dotenv
-   TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
+   ```env
    TONCENTER_API_URL=https://testnet.toncenter.com/api/v3
+   TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
+   TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
+   PAGE_LIMIT=50
    ```
-
-## Configuration
-
-All runtime options live in `src/config/config.ts`. By default:
-
-* **API endpoint**: `process.env.TONCENTER_API_URL` (Testnet v3)
-* **API key**: `process.env.TONCENTER_API_KEY`
-* **Contract address**: the lottery’s user-friendly address
-* **CSV output**: `data/lottery.csv`
-* **State file**: `data/state.json`
-* **Page limit**: 100 transactions per API call
-
-Feel free to adjust these constants as needed.
 
 ## Usage
 
-Run the parser with:
+Run the parser:
 
 ```bash
 npm start
@@ -69,39 +66,35 @@ npm start
 yarn start
 ```
 
-* On first run, it will fetch **all** transactions ever created by the lottery contract.
-* It writes records to `data/lottery.csv` (creates file with headers if missing).
-* It saves the highest `lt` in `data/state.json`.
-* On subsequent runs, it only fetches and appends **new** transactions (those with `lt` greater than saved).
+* **First run**: fetches *all* traces for the configured contract.
+* **Subsequent runs**: only fetches traces with `lt` greater than the saved cursor.
+* **CSV output**: appended to `data/lottery.csv` (created with headers if missing).
+* **State file**: `data/state.json` stores the last processed `lt`.
 
-## CSV Output
+## CSV Schema
 
-Each row in `data/lottery.csv` contains:
-
-| participant          | nftAddress | collectionAddress | nftIndex | timestamp    | txHash                           | lt           | isWin      | comment   | value          |
-| -------------------- | ---------- | ----------------- | -------- | ------------ | -------------------------------- | ------------ | ---------- | --------- | -------------- |
-| user-friendly string | optional   | optional          | optional | Unix seconds | transaction hash (Base64 or hex) | logical time | true/false | e.g. `x3` | nanoTON string |
-
-You can open this CSV in Excel, Google Sheets, or any data-processing pipeline.
+| Column            | Description                            |
+| ----------------- | -------------------------------------- |
+| participant       | Lottery participant (friendly address) |
+| nftAddress        | NFT item address (friendly)            |
+| collectionAddress | NFT collection address (friendly)      |
+| nftIndex          | NFT index within collection            |
+| timestamp         | Mint time (Unix seconds)               |
+| txHash            | Transaction hash                       |
+| lt                | Logical time of the trace              |
+| isWin             | `true` if win comment prefix detected  |
+| win               | Raw win comment (e.g. `x3`)            |
 
 ## Extending & Customization
 
-* **Additional fields**: modify `types/LotteryTx` and `mapToLotteryTx()` in `services/tonApiService.ts` to include extra data (fees, status, etc.).
-* **Alternate logic**: adjust the `isWin` heuristic or NFT parsing in `services/tonApiService.ts`.
-* **Mainnet support**: change the endpoint and contract address in `config.ts` to point to Mainnet.
+* **Additional fields**: update `LotteryTx` type and `mapTraceToLotteryTx()` in `services/tonApiService.ts`.
+* **Change heuristics**: adjust `isWin` logic or extract other action details.
+* **Mainnet support**: modify `TONCENTER_API_URL` and `TON_CONTRACT_ADDRESS` in `.env`.
 
 ## Development
 
-* Build to `dist/` via:
-
-  ```bash
-  npm run build
-  ```
-* Run compiled code:
-
-  ```bash
-  node dist/index.js
-  ```
+* Build: `npm run build`
+* Run compiled: `node dist/index.js`
 
 ## License
 
