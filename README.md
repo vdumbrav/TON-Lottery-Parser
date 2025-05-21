@@ -6,29 +6,30 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces from a TON
 
 * **Full history**: paginates through TON Center API (`/traces`) to fetch every trace since genesis or since last checkpoint.
 * **Incremental updates**: remembers last processed logical time (`lt`) and only fetches newer ones on each run.
-* **Structured output**: writes a CSV with fields:
+* **NFT-mint focus**: processes **only** traces that include an `nft_mint` action, ensuring the CSV contains only actual mint events.
+* **Structured output**: writes a CSV with these columns:
 
   * `participant` (user-friendly address)
   * `nftAddress` (friendly NFT item address)
   * `collectionAddress` (friendly collection address)
-  * `nftIndex`
+  * `nftIndex` (index of the minted token)
   * `timestamp` (Unix seconds)
   * `txHash`
   * `lt` (logical time)
   * `isWin` (boolean flag)
   * `win` (raw win comment text, e.g. `x3`)
-* **Type safety**: written in TypeScript, with full typings for TON traces.
+* **Type safety**: written in TypeScript, with strong typings for TON traces.
 * **Modular architecture**:
 
-  * **`services/tonApiService.ts`**: handles paged `/traces` calls and mapping raw traces → records
-  * **`core/processor.ts`**: coordinates fetch → parse → CSV append → state update
+  * **`services/tonApiService.ts`**: handles paged `/traces` calls and filters to NFT-mint traces
+  * **`core/processor.ts`**: coordinates fetch → filter → parse → CSV append → state update
   * **`services/csvService.ts`**: uses PapaParse to build and append CSV rows
   * **`services/stateService.ts`**: tracks last processed `lt` in `data/state.json`
   * **`config/config.ts`**: centralizes API endpoint, key, contract addresses, and pagination settings
 
 ## Prerequisites
 
-* **Node.js ≥ 20** (for ES modules & top-level `await`)
+* **Node.js ≥ 22** (for ES modules & top-level `await`)
 * **NPM** or **Yarn**
 * A **TON Center Testnet API key**
 
@@ -49,7 +50,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces from a TON
    ```
 3. Create a `.env` file in the project root:
 
-   ```env
+   ```dotenv
    TONCENTER_API_URL=https://testnet.toncenter.com/api/v3
    TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
    TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
@@ -66,30 +67,29 @@ npm start
 yarn start
 ```
 
-* **First run**: fetches *all* traces for the configured contract.
-* **Subsequent runs**: only fetches traces with `lt` greater than the saved cursor.
+* **First run**: fetches *all* NFT-mint traces for the configured contract.
+* **Subsequent runs**: only fetches and appends traces with `lt` greater than the saved cursor.
 * **CSV output**: appended to `data/lottery.csv` (created with headers if missing).
 * **State file**: `data/state.json` stores the last processed `lt`.
 
 ## CSV Schema
 
-| Column            | Description                            |
-| ----------------- | -------------------------------------- |
-| participant       | Lottery participant (friendly address) |
-| nftAddress        | NFT item address (friendly)            |
-| collectionAddress | NFT collection address (friendly)      |
-| nftIndex          | NFT index within collection            |
-| timestamp         | Mint time (Unix seconds)               |
-| txHash            | Transaction hash                       |
-| lt                | Logical time of the trace              |
-| isWin             | `true` if win comment prefix detected  |
-| win               | Raw win comment (e.g. `x3`)            |
+| Column            | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| participant       | Lottery participant (friendly TON address)         |
+| nftAddress        | NFT item address (friendly TON address)            |
+| collectionAddress | NFT collection address (friendly TON address)      |
+| nftIndex          | Index of the minted token                          |
+| timestamp         | Mint time (Unix seconds)                           |
+| txHash            | Transaction hash                                   |
+| lt                | Logical time of the trace                          |
+| isWin             | `true` if the win comment prefix (`x`) is detected |
+| win               | Raw win comment text (e.g. `x3`)                   |
 
 ## Extending & Customization
 
-* **Additional fields**: update `LotteryTx` type and `mapTraceToLotteryTx()` in `services/tonApiService.ts`.
-* **Change heuristics**: adjust `isWin` logic or extract other action details.
-* **Mainnet support**: modify `TONCENTER_API_URL` and `TON_CONTRACT_ADDRESS` in `.env`.
+* Modify `services/tonApiService.ts` to extract extra fields or adjust filtering logic.
+* Switch to Mainnet by updating `.env` values (API URL and contract address).
 
 ## Development
 
