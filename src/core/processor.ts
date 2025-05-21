@@ -1,6 +1,7 @@
 import { TonApiService } from "../services/tonApiService.js";
 import { CsvService } from "../services/csvService.js";
 import { StateService } from "../services/stateService.js";
+import { LotteryTx } from "../types/index.js";
 
 export class Processor {
   private api = new TonApiService();
@@ -35,7 +36,9 @@ export class Processor {
 
     // map → CSV rows
     console.log("[PROC] 🔨  Mapping traces → CSV rows");
-    const rows = traces.map((t) => this.api.mapTraceToLotteryTx(t));
+    const rows = traces
+      .map((t) => this.api.mapTraceToLotteryTx(t))
+      .filter((r): r is LotteryTx => r !== null && r !== undefined);
 
     // append to CSV
     console.log(`[PROC] 💾  Appending ${rows.length} rows to CSV`);
