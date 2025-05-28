@@ -96,42 +96,32 @@ export class TonApiService {
       urlSafe: true,
     });
 
-    const nftIndex = Number(mint.details.nft_item_index);
+    const nftIndex = parseInt(mint.details.nft_item_index, 10);
+    if (isNaN(nftIndex)) {
+      console.warn(`[API] ⚠ Invalid nft_index in tx ${txHash}`);
+      return null;
+    }
 
     let winComment: string | null = null;
     let winAmount = 0;
 
+    const PRIZE_MAP: Record<string, number> = {
+      x1: 10,
+      x3: 25,
+      x7: 50,
+      x20: 180,
+      x77: 700,
+      x200: 1800,
+      jp: 10000,
+      "Jackpot winner": 10000,
+    };
+
     for (const action of trace.actions) {
       const comment = action.details?.comment;
-      if (action.type === "ton_transfer" && comment) {
-        switch (comment) {
-          case "x1":
-            winAmount = 10;
-            break;
-          case "x3":
-            winAmount = 25;
-            break;
-          case "x7":
-            winAmount = 50;
-            break;
-          case "x20":
-            winAmount = 180;
-            break;
-          case "x77":
-            winAmount = 700;
-            break;
-          case "x200":
-            winAmount = 1800;
-            break;
-          case "jp":
-            winAmount = 10000;
-            break;
-          default:
-            winAmount = 0;
-        }
+      if (action.type === "ton_transfer" && comment && PRIZE_MAP[comment]) {
+        winAmount = PRIZE_MAP[comment];
         winComment = comment;
         console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT`);
-        break;
       }
     }
 

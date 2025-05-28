@@ -1,61 +1,35 @@
 # TON Lottery Parser
 
-A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces from a TON smart-contract lottery on Testnet, parses them for mint events and prize wins, and appends structured records into a CSV file for further analysis.
+A TypeScript/Node.js CLI tool that fetches all NFT-minting traces from a TON smart-contract lottery on Testnet, parses them for mint events and prize wins, and appends structured records into a CSV file for further analysis.
 
 ---
 
 ## Features
 
-- **Full history**: paginates through TON Center API (`/traces`) to fetch every trace since genesis or last checkpoint.
+- Full history: paginates through the TON Center API (`/traces`) to fetch every trace since genesis or last checkpoint.
+- Incremental updates: tracks last processed logical time (`lt`) in `data/state.json`
+- NFT-mint focus: filters only traces that include an `nft_mint` action.
+- Prize logic: checks `ton_transfer` actions with matching comment to determine win amounts
+- Typed and modular: fully written in TypeScript with strict schema validation
+- Outputs structured data to CSV using PapaParse
 
-- **Incremental updates**: remembers the last processed logical time (`lt`) and only fetches newer ones on each run.
+---
 
-- **NFT-mint focus**: processes only traces that include an `nft_mint` action.
+## Modules
 
-- **Structured output**: appends to a CSV with these columns:
-
-  - `participant` — wallet that minted the NFT
-  - `nftAddress` — NFT item address
-  - `collectionAddress` — collection contract address
-  - `nftIndex` — token index
-  - `timestamp` — mint time (Unix seconds)
-  - `txHash` — **hex-encoded root transaction hash**
-  - `lt` — logical time of the trace
-  - `isWin` — `true` if the mint resulted in a prize transfer
-  - `winComment` — raw TON transfer comment (e.g. `x3`, `jp`)
-  - `winAmount` — prize in USDT equivalent (e.g. `700`)
-
-- **New win logic**:
-
-  - Prizes are detected via `ton_transfer` actions containing a comment
-  - Comment → prize mapping is based on:
-
-    | Comment | Prize |
-    | ------- | ----- |
-    | `x1`    | 10    |
-    | `x3`    | 25    |
-    | `x7`    | 50    |
-    | `x20`   | 180   |
-    | `x77`   | 700   |
-    | `x200`  | 1800  |
-    | `jp`    | 10000 |
-
-- **Type-safe**: built in TypeScript, strict TON schema typings
-
-- **Modular** architecture:
-
-  - `services/tonApiService.ts` – fetches traces and maps them to structured results
-  - `core/processor.ts` – coordinates fetch → parse → write → save
-  - `services/csvService.ts` – appends CSV using PapaParse
-  - `services/stateService.ts` – tracks last processed `lt` in `data/state.json`
-  - `config/config.ts` – env-driven configuration (API key, contract address, etc.)
+- `services/tonApiService.ts`: API integration with TON Center, fetches and maps traces
+- `core/processor.ts`: orchestrates full run – fetch → parse → save
+- `services/csvService.ts`: appends structured trace results to CSV
+- `services/stateService.ts`: loads and saves last processed logical time (`lt`)
+- `config/config.ts`: environment-driven configuration (API key, contract address, page limit)
+- `utils/addressUtils.ts`: helper for safely parsing TON addresses
 
 ---
 
 ## Prerequisites
 
-- Node.js ≥ 22 (ESM & top-level `await`)
-- A TON Center **Testnet API key**
+- Node.js ≥ 22 (ESM + top-level `await`)
+- Valid TON Center API key for Testnet
 - NPM or Yarn
 
 ---
@@ -65,15 +39,15 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces from a TON
 ```bash
 git clone <repo-url>
 cd ton-lottery-parser
-npm install   # or yarn install
+npm install
 ```
 
-Create a `.env`:
+Create a `.env` file in project root:
 
 ```dotenv
 TONCENTER_API_URL=https://testnet.toncenter.com/api/v3
 TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
-TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
+TON_CONTRACT_ADDRESS=YOUR_CONTRACT_ADDRESS
 PAGE_LIMIT=50
 ```
 
@@ -87,39 +61,40 @@ npm start
 yarn start
 ```
 
-- Fetches all new NFT mints from the configured TON contract
-- Appends structured data to `data/lottery.csv`
-- Tracks the last `lt` in `data/state.json`
+On each run:
+
+- Fetches all new traces from the configured contract
+- Detects mint events and win payouts
+- Appends rows to `data/lottery.csv`
+- Updates last logical time in `data/state.json`
 
 ---
 
 ## CSV Output
 
-| Column            | Description                                       |
-| ----------------- | ------------------------------------------------- |
-| participant       | Minting wallet address (non-bounceable, url-safe) |
-| nftAddress        | NFT item address                                  |
-| collectionAddress | Collection contract address                       |
-| nftIndex          | NFT index within the collection                   |
-| timestamp         | Unix timestamp of mint                            |
-| txHash            | Root transaction hash (hex)                       |
-| lt                | Logical time                                      |
-| isWin             | Boolean — `true` if a prize was transferred       |
-| winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `jp`   |
-| winAmount         | Parsed prize value (in USDT or equivalent units)  |
+CSV is written to `data/lottery.csv`.
+
+| Column              | Description                                   |
+| ------------------- | --------------------------------------------- |
+| `participant`       | Address that minted the NFT (non-bounceable)  |
+| `nftAddress`        | Address of minted NFT                         |
+| `collectionAddress` | NFT collection contract address               |
+| `nftIndex`          | Index of the NFT in the collection            |
+| `timestamp`         | Unix timestamp of mint                        |
+| `txHash`            | Root transaction hash (hex)                   |
+| `lt`                | Logical time of trace                         |
+| `isWin`             | Whether a prize was won                       |
+| `winComment`        | Comment used to determine prize (e.g., `x77`) |
+| `winAmount`         | Prize amount (in USDT or equivalent)          |
 
 ---
 
 ## Developer Notes
 
-- `txHash` is now extracted from the **root trace**, not from `external_hash`
-- Prize detection logic uses:
-
-  ```ts
-  if (action.type === "ton_transfer" && action.details?.comment)
-  ```
-
-  to read the comment and apply a `switch` mapping
+- Traces are paged using `offset` + `limit`
+- NFT prize events are identified using `ton_transfer` actions with specific `comment`
+- `txHash` is decoded from base64 → hex from either `trace.tx_hash` or `trace_id`
+- Address formatting uses url-safe and bounceable=false for participants
 
 ---
 
