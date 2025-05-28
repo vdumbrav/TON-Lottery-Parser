@@ -77,11 +77,11 @@ export interface RawTrace {
 
 export interface LotteryTx {
   participant: string;
-  nftAddress: string;
-  collectionAddress: string;
-  nftIndex: number;
+  nftAddress?: string | null;
+  collectionAddress?: string | null;
+  nftIndex?: number | null;
   timestamp: number;
-  txHash: string; // The external hash of the trace
+  txHash: string;
   lt: string;
   isWin: boolean;
   winComment: string | null;
