@@ -22,6 +22,8 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `isWin` — `true` if the trace includes a prize transfer
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
   - `winAmount` — prize in USDT equivalent (e.g. `700`)
+  - `winTonAmount` — actual TON amount transferred for the prize
+  - `referralAmount` — referral payout in TON if present
 
 - **Prize logic**: prizes are detected by comments in `ton_transfer` actions, matched via:
 
@@ -103,7 +105,8 @@ yarn start
 | isWin             | Boolean — `true` if a prize was transferred                 |
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner` |
 | winAmount         | Parsed prize value in USDT or equivalent                    |
-
+| winTonAmount      | Actual TON amount transferred for the prize |
+| referralAmount    | Referral payout amount in TON |
 ---
 
 ## Developer Notes

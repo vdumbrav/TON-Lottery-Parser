@@ -86,4 +86,8 @@ export interface LotteryTx {
   isWin: boolean;
   winComment: string | null;
   winAmount: number;
+  /** Actual TON amount transferred for the prize, if any (in TON) */
+  winTonAmount: number | null;
+  /** Referral payout amount in TON if present */
+  referralAmount: number | null;
 }

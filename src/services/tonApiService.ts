@@ -64,13 +64,24 @@ export class TonApiService {
 
     let winComment: string | null = null;
     let winAmount = 0;
+    let winTonAmount = 0;
+    let referralAmount = 0;
 
     for (const action of trace.actions) {
+      if (action.type !== "ton_transfer") continue;
+
       const comment = action.details?.comment;
-      if (action.type === "ton_transfer" && comment && PRIZE_MAP[comment]) {
+      const value = action.details?.value ? parseInt(action.details.value, 10) : 0;
+      const ton = value / 1e9;
+
+      if (comment && PRIZE_MAP[comment]) {
         winAmount = PRIZE_MAP[comment];
         winComment = comment;
-        console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT`);
+        winTonAmount += ton;
+        console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`);
+      } else if (comment === "referral") {
+        referralAmount += ton;
+        console.log(`[API] 🤝 Referral detected: ${ton} TON`);
       }
     }
 
@@ -134,6 +145,8 @@ export class TonApiService {
         isWin: winAmount > 0,
         winComment,
         winAmount,
+        winTonAmount: winTonAmount || null,
+        referralAmount: referralAmount || null,
       };
     }
 
@@ -151,6 +164,8 @@ export class TonApiService {
         isWin: true,
         winComment,
         winAmount,
+        winTonAmount: winTonAmount || null,
+        referralAmount: referralAmount || null,
       };
     }
 
