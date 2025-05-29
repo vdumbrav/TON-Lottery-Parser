@@ -34,6 +34,11 @@ export interface InMsg {
   hash: string;
   source: string | null; // Can be null for external messages
   destination: string;
+  message_content?: {
+    hash: string;
+    body: string;
+    decoded: any | null;
+  };
   // ... other InMsg fields
 }
 
@@ -86,4 +91,10 @@ export interface LotteryTx {
   isWin: boolean;
   winComment: string | null;
   winAmount: number;
+  /** Actual TON amount transferred for the prize, if any (in TON) */
+  winTonAmount: number | null;
+  /** Referral payout amount in TON if present */
+  referralAmount: number | null;
+  /** Address that received the referral payout if present */
+  referralAddress: string | null;
 }
