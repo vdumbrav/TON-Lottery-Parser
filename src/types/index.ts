@@ -34,6 +34,12 @@ export interface InMsg {
   hash: string;
   source: string | null; // Can be null for external messages
   destination: string;
+  /** Raw TON cell body encoded as base64 */
+  message_content?: {
+    hash: string;
+    body: string;
+    decoded: any | null;
+  } | null;
   // ... other InMsg fields
 }
 
@@ -86,4 +92,10 @@ export interface LotteryTx {
   isWin: boolean;
   winComment: string | null;
   winAmount: number;
+  /** Actual TON amount transferred for the prize, if any (in TON) */
+  winTonAmount: number | null;
+  /** Referral payout amount in TON if present */
+  referralAmount: number | null;
+  /** Address that received the referral payout in friendly format */
+  referralAddress: string | null;
 }

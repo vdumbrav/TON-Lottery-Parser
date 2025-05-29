@@ -2,7 +2,18 @@ import axios from "axios";
 import { Buffer } from "buffer";
 import { CONFIG } from "../config/config.js";
 import { RawTrace, LotteryTx } from "../types/index.js";
-import { Address } from "@ton/core";
+import { Address, Cell } from "@ton/core";
+
+const PRIZE_MAP: Record<string, number> = {
+  x1: 10,
+  x3: 25,
+  x7: 50,
+  x20: 180,
+  x77: 700,
+  x200: 1800,
+  jp: 10000,
+  "Jackpot winner": 10000,
+};
 
 export class TonApiService {
   private client = axios.create({
@@ -51,35 +62,46 @@ export class TonApiService {
 
     const txHash = this.b64ToHex(rootB64);
 
-    const PRIZE_MAP: Record<string, number> = {
-      x1: 10,
-      x3: 25,
-      x7: 50,
-      x20: 180,
-      x77: 700,
-      x200: 1800,
-      jp: 10000,
-      "Jackpot winner": 10000,
-    };
 
     let winComment: string | null = null;
     let winAmount = 0;
+    let winTonAmount = 0;
+    let referralAmount = 0;
+    let referralAddress: string | null = null;
 
     for (const action of trace.actions) {
+      if (action.type !== "ton_transfer") continue;
+
       const comment = action.details?.comment;
-      if (action.type === "ton_transfer" && comment && PRIZE_MAP[comment]) {
+      const value = Number(action.details?.value) || 0;
+      const ton = value / 1e9;
+
+      if (comment && PRIZE_MAP[comment]) {
         winAmount = PRIZE_MAP[comment];
         winComment = comment;
-        console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT`);
+        winTonAmount += ton;
+        console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`);
+      } else if (comment === "referral") {
+        referralAmount += ton;
+        console.log(`[API] 🤝 Referral detected: ${ton} TON`);
       }
     }
 
     const mint = trace.actions.find((a) => a.type === "nft_mint");
     const firstTx = trace.transactions_order?.[0];
-    const rawSource = firstTx
-      ? trace.transactions[firstTx]?.in_msg?.source ??
-        trace.transactions[firstTx]?.account
-      : null;
+    const firstIn = firstTx ? trace.transactions[firstTx]?.in_msg : null;
+    const rawSource = firstIn?.source ?? trace.transactions[firstTx || ""]?.account ?? null;
+
+    if (firstIn?.message_content?.body) {
+      try {
+        const cell = Cell.fromBase64(firstIn.message_content.body);
+        const slice = cell.beginParse();
+        const addr = slice.loadAddress();
+        referralAddress = addr.toString({ bounceable: false, urlSafe: true, testOnly: true });
+      } catch {
+        console.warn(`[API] ⚠ Failed to parse referral address in tx ${txHash}`);
+      }
+    }
 
     if (!rawSource) {
       console.warn(`[API] ⚠ Missing source in tx ${txHash}`);
@@ -134,6 +156,9 @@ export class TonApiService {
         isWin: winAmount > 0,
         winComment,
         winAmount,
+        winTonAmount: winTonAmount || null,
+        referralAmount: referralAmount || null,
+        referralAddress,
       };
     }
 
@@ -151,6 +176,9 @@ export class TonApiService {
         isWin: true,
         winComment,
         winAmount,
+        winTonAmount: winTonAmount || null,
+        referralAmount: referralAmount || null,
+        referralAddress,
       };
     }
 
