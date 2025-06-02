@@ -62,7 +62,6 @@ export class TonApiService {
 
     const txHash = this.b64ToHex(rootB64);
 
-
     let winComment: string | null = null;
     let winAmount = 0;
     let winTonAmount = 0;
@@ -80,15 +79,18 @@ export class TonApiService {
         winAmount = PRIZE_MAP[comment];
         winComment = comment;
         winTonAmount += ton;
-        console.log(`[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`);
+        console.log(
+          `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
+        );
       } else if (comment === "referral") {
         referralAmount += ton;
         if (!referralAddress && action.details?.destination) {
           try {
-            referralAddress = Address.parse(action.details.destination).toString({
+            referralAddress = Address.parse(
+              action.details.destination
+            ).toString({
               bounceable: false,
               urlSafe: true,
-              testOnly: true,
             });
           } catch {
             console.warn(
@@ -117,7 +119,6 @@ export class TonApiService {
       participant = Address.parse(rawSource).toString({
         bounceable: false,
         urlSafe: true,
-        testOnly: true,
       });
     } catch {
       console.warn(`[API] ⚠ Invalid address: ${rawSource}`);
@@ -132,14 +133,14 @@ export class TonApiService {
       mint.details.nft_item_index
     ) {
       const nftAddress = Address.parse(mint.details.nft_item).toString({
-        bounceable: true,
+        bounceable: false,
         urlSafe: true,
       });
 
       const collectionAddress = Address.parse(
         mint.details.nft_collection
       ).toString({
-        bounceable: true,
+        bounceable: false,
         urlSafe: true,
       });
 
