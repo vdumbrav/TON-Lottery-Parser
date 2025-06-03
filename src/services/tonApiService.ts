@@ -75,6 +75,7 @@ export class TonApiService {
 
     const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
     if (!rootB64) {
+      console.warn(`[API] ⚠ Missing root tx hash`);
       return null;
     }
 
@@ -96,6 +97,7 @@ export class TonApiService {
       : null;
 
     if (!rawSource) {
+      console.warn(`[API] ⚠ Missing source in tx ${txHash}`);
       return null;
     }
 
@@ -106,6 +108,7 @@ export class TonApiService {
         urlSafe: true,
       });
     } catch {
+      console.warn(`[API] ⚠ Invalid address: ${rawSource}`);
       return null;
     }
 
@@ -136,17 +139,16 @@ export class TonApiService {
             referralNano += value;
             if (!referralAddress && action.details?.destination) {
               try {
-                console.warn(
-                  `[API] invalid referral address: ${action.details.destination}`
-                );
                 referralAddress = Address.parse(
                   action.details.destination
                 ).toString({
                   bounceable: false,
                   urlSafe: true,
                 });
-              } catch (e) {
-                console.error("error", e);
+              } catch {
+                console.warn(
+                  `[API] invalid referral address: ${action.details.destination}`
+                );
               }
             }
             continue;
@@ -266,7 +268,7 @@ export class TonApiService {
         buyMasterAddress,
       };
     }
-
+    console.log(`[API] ⛔ Skipped trace ${txHash} (no nft_mint or prize)`);
     return null;
   }
 }
