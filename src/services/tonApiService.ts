@@ -99,46 +99,50 @@ export class TonApiService {
     });
 
     for (const action of trace.actions) {
-      if (action.type === "ton_transfer") {
-        const comment = action.details?.comment;
+      if (action.type === "ton_transfer" || action.type === "call_contract") {
+        const dest = action.details?.destination;
+        const src = action.details?.source;
         const value = Number(action.details?.value) || 0;
         const ton = value / 1e9;
 
-        if (comment && PRIZE_MAP[comment]) {
-          winAmount = PRIZE_MAP[comment];
-          winComment = comment;
-          winTonAmount += ton;
-          console.log(
-            `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
-          );
-        } else if (comment === "referral") {
-          referralAmount += ton;
-          if (!referralAddress && action.details?.destination) {
-            try {
-              referralAddress = Address.parse(
-                action.details.destination
-              ).toString({
-                bounceable: false,
-                urlSafe: true,
-              });
-            } catch {
-              console.warn(
-                `[API] ⚠ Invalid referral address: ${action.details.destination}`
-              );
+        if (action.type === "ton_transfer") {
+          const comment = action.details?.comment;
+          if (comment && PRIZE_MAP[comment]) {
+            winAmount = PRIZE_MAP[comment];
+            winComment = comment;
+            winTonAmount += ton;
+            console.log(
+              `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
+            );
+            continue;
+          } else if (comment === "referral") {
+            referralAmount += ton;
+            if (!referralAddress && action.details?.destination) {
+              try {
+                referralAddress = Address.parse(
+                  action.details.destination
+                ).toString({
+                  bounceable: false,
+                  urlSafe: true,
+                });
+              } catch {
+                console.warn(
+                  `[API] ⚠ Invalid referral address: ${action.details.destination}`
+                );
+              }
             }
+            console.log(`[API] 🤝 Referral detected: ${ton} TON`);
+            continue;
           }
-          console.log(`[API] 🤝 Referral detected: ${ton} TON`);
-        } else if (
-          action.details?.destination &&
-          action.details?.source &&
-          Address.parse(action.details.destination).toString({
-            bounceable: false,
-            urlSafe: true,
-          }) === contractAddress &&
-          Address.parse(action.details.source).toString({
-            bounceable: false,
-            urlSafe: true,
-          }) === participant
+        }
+
+        if (
+          dest &&
+          src &&
+          Address.parse(dest).toString({ bounceable: false, urlSafe: true }) ===
+            contractAddress &&
+          Address.parse(src).toString({ bounceable: false, urlSafe: true }) ===
+            participant
         ) {
           buyAmount += ton;
           buyCurrency = "TON";
