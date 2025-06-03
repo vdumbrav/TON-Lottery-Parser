@@ -9,7 +9,7 @@ export class Processor {
   private state = new StateService();
 
   async run() {
-    console.log('[PROC] start');
+    console.log("[PROC] start");
     const lastLt = await this.state.getLastLt();
 
     // fetch all traces (via tx→traces)
@@ -21,8 +21,8 @@ export class Processor {
     }
 
     if (!traces.length) {
-      console.log('[PROC] no new traces');
-      console.log('[PROC] end');
+      console.log("[PROC] no new traces");
+      console.log("[PROC] end");
       return;
     }
 
@@ -42,7 +42,6 @@ export class Processor {
 
     await this.state.saveLastLt(maxLt);
 
-    console.log('[PROC] end');
-
+    console.log("[PROC] end");
   }
 }
