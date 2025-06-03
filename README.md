@@ -19,6 +19,8 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `timestamp` — Unix time of the event
   - `txHash` — hex-encoded root transaction hash
   - `lt` — logical time of the trace
+  - `buyAmount` — amount paid to buy the ticket
+  - `buyCurrency` — currency used for the ticket purchase (e.g. `TON`)
   - `isWin` — `true` if the trace includes a prize transfer
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
   - `winAmount` — prize in USDT equivalent (e.g. `700`)
@@ -103,6 +105,8 @@ yarn start
 | timestamp         | Unix timestamp of mint or prize payout                      |
 | txHash            | Root transaction hash (hex-encoded)                         |
 | lt                | Logical time of the trace                                   |
+| buyAmount         | Amount paid to buy the ticket |
+| buyCurrency       | Currency used for the ticket purchase |
 | isWin             | Boolean — `true` if a prize was transferred                 |
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner` |
 | winAmount         | Parsed prize value in USDT or equivalent                    |

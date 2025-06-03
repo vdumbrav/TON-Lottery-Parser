@@ -67,13 +67,24 @@ export class TonApiService {
     let winTonAmount = 0;
     let referralAmount = 0;
     let referralAddress: string | null = null;
+    let buyAmount = 0;
+    let buyCurrency: string | null = null;
 
     for (const action of trace.actions) {
-      if (action.type !== "ton_transfer") continue;
-
-      const comment = action.details?.comment;
       const value = Number(action.details?.value) || 0;
       const ton = value / 1e9;
+      const comment = action.details?.comment;
+
+      // detect ticket purchase (incoming transfer to the contract)
+      if (action.details?.destination === CONFIG.contractAddress) {
+        buyAmount += ton;
+        if (!buyCurrency) {
+          buyCurrency = action.type === "ton_transfer" ? "TON" : action.type;
+        }
+        console.log(`[API] 🎟️ Ticket purchase detected: ${ton} ${buyCurrency}`);
+      }
+
+      if (action.type !== "ton_transfer") continue;
 
       if (comment && PRIZE_MAP[comment]) {
         winAmount = PRIZE_MAP[comment];
@@ -158,6 +169,8 @@ export class TonApiService {
         timestamp: trace.start_utime,
         txHash,
         lt: trace.start_lt,
+        buyAmount: buyAmount || null,
+        buyCurrency,
         isWin: winAmount > 0,
         winComment,
         winAmount,
@@ -178,6 +191,8 @@ export class TonApiService {
         timestamp: trace.start_utime,
         txHash,
         lt: trace.start_lt,
+        buyAmount: buyAmount || null,
+        buyCurrency,
         isWin: true,
         winComment,
         winAmount,
