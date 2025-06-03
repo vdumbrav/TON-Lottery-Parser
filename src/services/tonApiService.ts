@@ -134,7 +134,9 @@ export class TonApiService {
             referralNano += value;
             if (!referralAddress && action.details?.destination) {
               try {
-                referralAddress = Address.parse(action.details.destination).toString({
+                referralAddress = Address.parse(
+                  action.details.destination
+                ).toString({
                   bounceable: false,
                   urlSafe: true,
                 });
@@ -181,7 +183,10 @@ export class TonApiService {
           buyAmount = amount;
           buyCurrency = symbol;
           buyMasterAddress = master
-            ? Address.parse(master).toString({ bounceable: false, urlSafe: true })
+            ? Address.parse(master).toString({
+                bounceable: false,
+                urlSafe: true,
+              })
             : null;
           purchaseRecorded = true;
         }
@@ -226,7 +231,7 @@ export class TonApiService {
         winComment,
         winAmount,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: referralAddress ? nanoToTon(referralNano) : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
         referralAddress,
         buyAmount,
         buyCurrency,
@@ -248,7 +253,7 @@ export class TonApiService {
         winComment,
         winAmount,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: referralAddress ? nanoToTon(referralNano) : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
         referralAddress,
         buyAmount,
         buyCurrency,
