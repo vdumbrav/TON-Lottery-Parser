@@ -8,6 +8,7 @@ import {
   TraceActionDetails,
 } from "../types/index.js";
 import { Address } from "@ton/core";
+import { nanoToTon, delay } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
@@ -29,16 +30,20 @@ function isJettonDetails(
 export class TonApiService {
   private client = axios.create({
     baseURL: CONFIG.apiEndpoint,
+    timeout: 10_000,
     params: { api_key: CONFIG.apiKey },
+  });
+  private contract = Address.parse(CONFIG.contractAddress).toString({
+    bounceable: false,
+    urlSafe: true,
   });
 
   async fetchAllTraces(): Promise<RawTrace[]> {
-    console.log(`[API] ▶ Fetching traces for ${CONFIG.contractAddress}`);
+    console.log("[API] start fetching traces");
     const all: RawTrace[] = [];
     let offset = 0;
 
     while (true) {
-      console.log(`[API] 🔄 offset=${offset}, limit=${CONFIG.pageLimit}`);
       const { data } = await this.client.get("/traces", {
         params: {
           account: CONFIG.contractAddress,
@@ -48,15 +53,14 @@ export class TonApiService {
         },
       });
 
-      const traces = data.traces as RawTrace[];
-      console.log(`[API] ✅ Got ${traces.length} traces`);
-
+      const traces = (data.traces as RawTrace[]) || [];
       if (!traces.length) break;
       all.push(...traces);
       offset += CONFIG.pageLimit;
+      await delay(1_000);
     }
 
-    console.log(`[API] 📦 Total traces fetched: ${all.length}`);
+    console.log(`[API] fetched ${all.length} traces`);
     return all;
   }
 
@@ -65,6 +69,10 @@ export class TonApiService {
   }
 
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
+    if (!trace.actions || !trace.transactions_order) {
+      return null;
+    }
+
     const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
     if (!rootB64) {
       console.warn(`[API] ⚠ Missing root tx hash`);
@@ -75,10 +83,10 @@ export class TonApiService {
 
     let winComment: string | null = null;
     let winAmount = 0;
-    let winTonAmount = 0;
-    let referralAmount = 0;
+    let winTonNano = 0n;
+    let referralNano = 0n;
     let referralAddress: string | null = null;
-    let buyAmount = 0;
+    let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
     let buyMasterAddress: string | null = null;
 
@@ -104,10 +112,6 @@ export class TonApiService {
       return null;
     }
 
-    const contractAddress = Address.parse(CONFIG.contractAddress).toString({
-      bounceable: false,
-      urlSafe: true,
-    });
     let purchaseRecorded = false;
 
     for (const action of trace.actions) {
@@ -120,21 +124,19 @@ export class TonApiService {
         const srcNorm = src
           ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
           : null;
-        const value = Number(action.details?.value) || 0;
-        const ton = value / 1e9;
+        const value = action.details?.value ? BigInt(action.details.value) : 0n;
 
         if (action.type === "ton_transfer") {
           const comment = action.details?.comment;
-          if (comment && PRIZE_MAP[comment]) {
-            winAmount = PRIZE_MAP[comment];
-            winComment = comment;
-            winTonAmount += ton;
-            console.log(
-              `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
-            );
+          const prizeKey = (comment ?? "").trim().toLowerCase();
+          const prizeUsd = PRIZE_MAP[prizeKey];
+          if (prizeUsd) {
+            winAmount = prizeUsd;
+            winComment = prizeKey;
+            winTonNano += value;
             continue;
-          } else if (comment === "referral") {
-            referralAmount += ton;
+          } else if (prizeKey === "referral") {
+            referralNano += value;
             if (!referralAddress && action.details?.destination) {
               try {
                 referralAddress = Address.parse(
@@ -145,26 +147,24 @@ export class TonApiService {
                 });
               } catch {
                 console.warn(
-                  `[API] ⚠ Invalid referral address: ${action.details.destination}`
+                  `[API] invalid referral address: ${action.details.destination}`
                 );
               }
             }
-            console.log(`[API] 🤝 Referral detected: ${ton} TON`);
             continue;
           }
         }
 
         if (
           !purchaseRecorded &&
-          destNorm === contractAddress &&
+          destNorm === this.contract &&
           srcNorm === participant &&
-          ton > 0
+          value > 0n
         ) {
-          buyAmount = ton;
+          buyAmount = nanoToTon(value);
           buyCurrency = "TON";
           buyMasterAddress = null;
           purchaseRecorded = true;
-          console.log(`[API] 🎟️ Ticket purchase detected: ${ton} TON`);
         }
       } else if (action.type === "jetton_transfer") {
         const dest = action.details?.destination;
@@ -183,19 +183,20 @@ export class TonApiService {
         const master = jetton?.master ?? null;
         if (
           !purchaseRecorded &&
-          destNorm === contractAddress &&
+          destNorm === this.contract &&
           srcNorm === participant &&
           amount > 0
         ) {
           buyAmount = amount;
           buyCurrency = symbol;
           buyMasterAddress = master
-            ? Address.parse(master).toString({ bounceable: false, urlSafe: true })
+            ? Address.parse(master).toString({
+                bounceable: false,
+                urlSafe: true,
+              })
             : null;
+          console.warn(`[API] invalid nft_index in tx ${txHash}`);
           purchaseRecorded = true;
-          console.log(
-            `[API] 🎟️ Ticket purchase detected: ${amount} ${symbol}`
-          );
         }
       }
     }
@@ -223,7 +224,6 @@ export class TonApiService {
 
       const nftIndex = parseInt(mint.details.nft_item_index, 10);
       if (isNaN(nftIndex)) {
-        console.warn(`[API] ⚠ Invalid nft_index in tx ${txHash}`);
         return null;
       }
 
@@ -238,10 +238,10 @@ export class TonApiService {
         isWin: winAmount > 0,
         winComment,
         winAmount,
-        winTonAmount: winTonAmount || null,
-        referralAmount: referralAmount || null,
+        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
         referralAddress,
-        buyAmount: buyAmount || null,
+        buyAmount,
         buyCurrency,
         buyMasterAddress,
       };
@@ -249,7 +249,6 @@ export class TonApiService {
 
     // 🎯 Case: prize only (no mint)
     if (winAmount > 0) {
-      console.log(`[API] 🎯 Prize-only trace: ${txHash}`);
       return {
         participant,
         nftAddress: null,
@@ -261,15 +260,14 @@ export class TonApiService {
         isWin: true,
         winComment,
         winAmount,
-        winTonAmount: winTonAmount || null,
-        referralAmount: referralAmount || null,
+        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
         referralAddress,
-        buyAmount: buyAmount || null,
+        buyAmount,
         buyCurrency,
         buyMasterAddress,
       };
     }
-
     console.log(`[API] ⛔ Skipped trace ${txHash} (no nft_mint or prize)`);
     return null;
   }
