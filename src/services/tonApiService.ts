@@ -1,7 +1,12 @@
 import axios from "axios";
 import { Buffer } from "buffer";
 import { CONFIG } from "../config/config.js";
-import { RawTrace, LotteryTx } from "../types/index.js";
+import {
+  RawTrace,
+  LotteryTx,
+  JettonTransferDetails,
+  TraceActionDetails,
+} from "../types/index.js";
 import { Address } from "@ton/core";
 
 const PRIZE_MAP: Record<string, number> = {
@@ -14,6 +19,12 @@ const PRIZE_MAP: Record<string, number> = {
   jp: 10000,
   "Jackpot winner": 10000,
 };
+
+function isJettonDetails(
+  details: TraceActionDetails
+): details is JettonTransferDetails {
+  return typeof (details as any)?.jetton === "object";
+}
 
 export class TonApiService {
   private client = axios.create({
@@ -67,42 +78,10 @@ export class TonApiService {
     let winTonAmount = 0;
     let referralAmount = 0;
     let referralAddress: string | null = null;
+    let buyAmount = 0;
+    let buyCurrency: string | null = null;
+    let buyMasterAddress: string | null = null;
 
-    for (const action of trace.actions) {
-      if (action.type !== "ton_transfer") continue;
-
-      const comment = action.details?.comment;
-      const value = Number(action.details?.value) || 0;
-      const ton = value / 1e9;
-
-      if (comment && PRIZE_MAP[comment]) {
-        winAmount = PRIZE_MAP[comment];
-        winComment = comment;
-        winTonAmount += ton;
-        console.log(
-          `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
-        );
-      } else if (comment === "referral") {
-        referralAmount += ton;
-        if (!referralAddress && action.details?.destination) {
-          try {
-            referralAddress = Address.parse(
-              action.details.destination
-            ).toString({
-              bounceable: false,
-              urlSafe: true,
-            });
-          } catch {
-            console.warn(
-              `[API] ⚠ Invalid referral address: ${action.details.destination}`
-            );
-          }
-        }
-        console.log(`[API] 🤝 Referral detected: ${ton} TON`);
-      }
-    }
-
-    const mint = trace.actions.find((a) => a.type === "nft_mint");
     const firstTx = trace.transactions_order?.[0];
     const rawSource = firstTx
       ? trace.transactions[firstTx]?.in_msg?.source ??
@@ -124,6 +103,104 @@ export class TonApiService {
       console.warn(`[API] ⚠ Invalid address: ${rawSource}`);
       return null;
     }
+
+    const contractAddress = Address.parse(CONFIG.contractAddress).toString({
+      bounceable: false,
+      urlSafe: true,
+    });
+    let purchaseRecorded = false;
+
+    for (const action of trace.actions) {
+      if (action.type === "ton_transfer" || action.type === "call_contract") {
+        const dest = action.details?.destination;
+        const src = action.details?.source;
+        const destNorm = dest
+          ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const srcNorm = src
+          ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const value = Number(action.details?.value) || 0;
+        const ton = value / 1e9;
+
+        if (action.type === "ton_transfer") {
+          const comment = action.details?.comment;
+          if (comment && PRIZE_MAP[comment]) {
+            winAmount = PRIZE_MAP[comment];
+            winComment = comment;
+            winTonAmount += ton;
+            console.log(
+              `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
+            );
+            continue;
+          } else if (comment === "referral") {
+            referralAmount += ton;
+            if (!referralAddress && action.details?.destination) {
+              try {
+                referralAddress = Address.parse(
+                  action.details.destination
+                ).toString({
+                  bounceable: false,
+                  urlSafe: true,
+                });
+              } catch {
+                console.warn(
+                  `[API] ⚠ Invalid referral address: ${action.details.destination}`
+                );
+              }
+            }
+            console.log(`[API] 🤝 Referral detected: ${ton} TON`);
+            continue;
+          }
+        }
+
+        if (
+          !purchaseRecorded &&
+          destNorm === contractAddress &&
+          srcNorm === participant &&
+          ton > 0
+        ) {
+          buyAmount = ton;
+          buyCurrency = "TON";
+          buyMasterAddress = null;
+          purchaseRecorded = true;
+          console.log(`[API] 🎟️ Ticket purchase detected: ${ton} TON`);
+        }
+      } else if (action.type === "jetton_transfer") {
+        const dest = action.details?.destination;
+        const src = action.details?.source;
+        const destNorm = dest
+          ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const srcNorm = src
+          ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const details = action.details as TraceActionDetails;
+        const jetton = isJettonDetails(details) ? details.jetton : undefined;
+        const decimals = jetton?.decimals ?? 9;
+        const amount = (Number(action.details?.value) || 0) / 10 ** decimals;
+        const symbol = jetton?.symbol ?? "JETTON";
+        const master = jetton?.master ?? null;
+        if (
+          !purchaseRecorded &&
+          destNorm === contractAddress &&
+          srcNorm === participant &&
+          amount > 0
+        ) {
+          buyAmount = amount;
+          buyCurrency = symbol;
+          buyMasterAddress = master
+            ? Address.parse(master).toString({ bounceable: false, urlSafe: true })
+            : null;
+          purchaseRecorded = true;
+          console.log(
+            `[API] 🎟️ Ticket purchase detected: ${amount} ${symbol}`
+          );
+        }
+      }
+    }
+
+    const mint = trace.actions.find((a) => a.type === "nft_mint");
 
     // 🎯 Case: valid mint
     if (
@@ -164,6 +241,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount: buyAmount || null,
+        buyCurrency,
+        buyMasterAddress,
       };
     }
 
@@ -184,6 +264,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount: buyAmount || null,
+        buyCurrency,
+        buyMasterAddress,
       };
     }
 

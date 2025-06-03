@@ -11,6 +11,16 @@ export interface TraceActionDetails {
   // ... other possible fields
 }
 
+export interface JettonInfo {
+  decimals?: number;
+  symbol?: string;
+  master?: string;
+}
+
+export interface JettonTransferDetails extends TraceActionDetails {
+  jetton?: JettonInfo;
+}
+
 export interface TraceAction {
   trace_id: string;
   action_id: string;
@@ -23,10 +33,11 @@ export interface TraceAction {
   type:
     | "ton_transfer"
     | "call_contract"
+    | "jetton_transfer"
     | "nft_mint"
     | "contract_deploy"
     | string;
-  details: TraceActionDetails;
+  details: TraceActionDetails | JettonTransferDetails;
   trace_external_hash: string;
 }
 
@@ -97,4 +108,10 @@ export interface LotteryTx {
   referralAmount: number | null;
   /** Address that received the referral payout if present */
   referralAddress: string | null;
+  /** Amount the participant spent to buy the ticket */
+  buyAmount: number | null;
+  /** Currency used for the purchase (e.g. `TON` or jetton symbol) */
+  buyCurrency: string | null;
+  /** Jetton master address if the ticket was bought with a jetton */
+  buyMasterAddress: string | null;
 }
