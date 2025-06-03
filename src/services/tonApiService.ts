@@ -8,7 +8,7 @@ import {
   TraceActionDetails,
 } from "../types/index.js";
 import { Address } from "@ton/core";
-import { NANO, nanoToTon, delay } from "../core/utils.js";
+import { nanoToTon, delay } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
@@ -39,6 +39,7 @@ export class TonApiService {
   });
 
   async fetchAllTraces(): Promise<RawTrace[]> {
+    console.log('[API] start fetching traces');
     const all: RawTrace[] = [];
     let offset = 0;
 
@@ -59,6 +60,7 @@ export class TonApiService {
       await delay(1_000);
     }
 
+    console.log(`[API] fetched ${all.length} traces`);
     return all;
   }
 
@@ -134,7 +136,7 @@ export class TonApiService {
             referralNano += value;
             if (!referralAddress && action.details?.destination) {
               try {
-                referralAddress = Address.parse(
+                console.warn(`[API] invalid referral address: ${action.details.destination}`);
                   action.details.destination
                 ).toString({
                   bounceable: false,
@@ -186,6 +188,7 @@ export class TonApiService {
             ? Address.parse(master).toString({
                 bounceable: false,
                 urlSafe: true,
+        console.warn(`[API] invalid nft_index in tx ${txHash}`);
               })
             : null;
           purchaseRecorded = true;
