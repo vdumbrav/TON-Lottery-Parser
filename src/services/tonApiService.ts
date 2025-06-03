@@ -20,6 +20,7 @@ export class TonApiService {
     baseURL: CONFIG.apiEndpoint,
     params: { api_key: CONFIG.apiKey },
   });
+  private contractRaw = Address.parse(CONFIG.contractAddress).toString();
 
   async fetchAllTraces(): Promise<RawTrace[]> {
     console.log(`[API] ▶ Fetching traces for ${CONFIG.contractAddress}`);
@@ -67,6 +68,8 @@ export class TonApiService {
     let winTonAmount = 0;
     let referralAmount = 0;
     let referralAddress: string | null = null;
+    let buyAmount = 0;
+    let currency = "TON";
 
     for (const action of trace.actions) {
       if (action.type !== "ton_transfer") continue;
@@ -99,6 +102,28 @@ export class TonApiService {
           }
         }
         console.log(`[API] 🤝 Referral detected: ${ton} TON`);
+      }
+    }
+
+    for (const action of trace.actions) {
+      if (action.type !== "call_contract") continue;
+      if (
+        action.details?.destination === this.contractRaw &&
+        action.details?.source &&
+        action.details.source !== this.contractRaw
+      ) {
+        const value = Number(action.details.value || 0);
+        if (value > 0) {
+          buyAmount = value / 1e9;
+          currency = "TON";
+        }
+        const extras = action.details.extra_currencies;
+        if (extras && Object.keys(extras).length > 0) {
+          const [addr, amount] = Object.entries(extras)[0];
+          buyAmount = Number(amount) / 1e9;
+          currency = addr;
+        }
+        break;
       }
     }
 
@@ -164,6 +189,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount,
+        currency,
+        masterAddress: null,
       };
     }
 
@@ -184,6 +212,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount,
+        currency,
+        masterAddress: null,
       };
     }
 
