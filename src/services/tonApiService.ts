@@ -67,8 +67,8 @@ export class TonApiService {
     let winTonAmount = 0;
     let referralAmount = 0;
     let referralAddress: string | null = null;
-    let buyTonAmount = 0;
-    let buyJettonAmount = 0;
+    let buyAmount = 0;
+    let buyCurrency: string | null = null;
 
     const firstTx = trace.transactions_order?.[0];
     const rawSource = firstTx
@@ -139,14 +139,19 @@ export class TonApiService {
             urlSafe: true,
           }) === participant
         ) {
-          buyTonAmount += ton;
+          buyAmount += ton;
+          buyCurrency = "TON";
           console.log(`[API] 🎟️ Ticket purchase detected: ${ton} TON`);
         }
       } else if (action.type === "jetton_transfer") {
         const dest = action.details?.destination;
         const src = action.details?.source;
         const value = Number(action.details?.value) || 0;
-        const amount = value / 1e9;
+        const decimals = Number(
+          (action.details as any)?.jetton?.decimals ?? 9
+        );
+        const amount = value / 10 ** decimals;
+        const symbol = (action.details as any)?.jetton?.symbol ?? "JETTON";
         if (
           dest &&
           src &&
@@ -155,9 +160,10 @@ export class TonApiService {
           Address.parse(src).toString({ bounceable: false, urlSafe: true }) ===
             participant
         ) {
-          buyJettonAmount += amount;
+          buyAmount += amount;
+          buyCurrency = symbol;
           console.log(
-            `[API] 🎟️ Ticket purchase detected: ${amount} Jetton units`
+            `[API] 🎟️ Ticket purchase detected: ${amount} ${symbol}`
           );
         }
       }
@@ -204,8 +210,8 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
-        buyTonAmount: buyTonAmount || null,
-        buyJettonAmount: buyJettonAmount || null,
+        buyAmount: buyAmount || null,
+        buyCurrency,
       };
     }
 
@@ -226,8 +232,8 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
-        buyTonAmount: buyTonAmount || null,
-        buyJettonAmount: buyJettonAmount || null,
+        buyAmount: buyAmount || null,
+        buyCurrency,
       };
     }
 

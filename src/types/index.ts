@@ -97,8 +97,8 @@ export interface LotteryTx {
   referralAmount: number | null;
   /** Address that received the referral payout if present */
   referralAddress: string | null;
-  /** Amount of TON the participant spent to buy the ticket */
-  buyTonAmount: number | null;
-  /** Amount of Jetton tokens the participant spent, if any (in jetton units) */
-  buyJettonAmount: number | null;
+  /** Amount the participant spent to buy the ticket */
+  buyAmount: number | null;
+  /** Currency used for the purchase (e.g. `TON` or jetton symbol) */
+  buyCurrency: string | null;
 }
