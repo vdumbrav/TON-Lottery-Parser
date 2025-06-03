@@ -1,7 +1,12 @@
 import axios from "axios";
 import { Buffer } from "buffer";
 import { CONFIG } from "../config/config.js";
-import { RawTrace, LotteryTx } from "../types/index.js";
+import {
+  RawTrace,
+  LotteryTx,
+  JettonTransferDetails,
+  TraceActionDetails,
+} from "../types/index.js";
 import { Address } from "@ton/core";
 
 const PRIZE_MAP: Record<string, number> = {
@@ -14,6 +19,12 @@ const PRIZE_MAP: Record<string, number> = {
   jp: 10000,
   "Jackpot winner": 10000,
 };
+
+function isJettonDetails(
+  details: TraceActionDetails
+): details is JettonTransferDetails {
+  return typeof (details as any)?.jetton === "object";
+}
 
 export class TonApiService {
   private client = axios.create({
@@ -97,11 +108,18 @@ export class TonApiService {
       bounceable: false,
       urlSafe: true,
     });
+    let purchaseRecorded = false;
 
     for (const action of trace.actions) {
       if (action.type === "ton_transfer" || action.type === "call_contract") {
         const dest = action.details?.destination;
         const src = action.details?.source;
+        const destNorm = dest
+          ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const srcNorm = src
+          ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+          : null;
         const value = Number(action.details?.value) || 0;
         const ton = value / 1e9;
 
@@ -137,41 +155,44 @@ export class TonApiService {
         }
 
         if (
-          dest &&
-          src &&
-          Address.parse(dest).toString({ bounceable: false, urlSafe: true }) ===
-            contractAddress &&
-          Address.parse(src).toString({ bounceable: false, urlSafe: true }) ===
-            participant
+          !purchaseRecorded &&
+          destNorm === contractAddress &&
+          srcNorm === participant &&
+          ton > 0
         ) {
-          buyAmount += ton;
+          buyAmount = ton;
           buyCurrency = "TON";
           buyMasterAddress = null;
+          purchaseRecorded = true;
           console.log(`[API] 🎟️ Ticket purchase detected: ${ton} TON`);
         }
       } else if (action.type === "jetton_transfer") {
         const dest = action.details?.destination;
         const src = action.details?.source;
-        const value = Number(action.details?.value) || 0;
-        const decimals = Number(
-          (action.details as any)?.jetton?.decimals ?? 9
-        );
-        const amount = value / 10 ** decimals;
-        const symbol = (action.details as any)?.jetton?.symbol ?? "JETTON";
-        const master = (action.details as any)?.jetton?.master ?? null;
+        const destNorm = dest
+          ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const srcNorm = src
+          ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const details = action.details as TraceActionDetails;
+        const jetton = isJettonDetails(details) ? details.jetton : undefined;
+        const decimals = jetton?.decimals ?? 9;
+        const amount = (Number(action.details?.value) || 0) / 10 ** decimals;
+        const symbol = jetton?.symbol ?? "JETTON";
+        const master = jetton?.master ?? null;
         if (
-          dest &&
-          src &&
-          Address.parse(dest).toString({ bounceable: false, urlSafe: true }) ===
-            contractAddress &&
-          Address.parse(src).toString({ bounceable: false, urlSafe: true }) ===
-            participant
+          !purchaseRecorded &&
+          destNorm === contractAddress &&
+          srcNorm === participant &&
+          amount > 0
         ) {
-          buyAmount += amount;
+          buyAmount = amount;
           buyCurrency = symbol;
           buyMasterAddress = master
             ? Address.parse(master).toString({ bounceable: false, urlSafe: true })
             : null;
+          purchaseRecorded = true;
           console.log(
             `[API] 🎟️ Ticket purchase detected: ${amount} ${symbol}`
           );
