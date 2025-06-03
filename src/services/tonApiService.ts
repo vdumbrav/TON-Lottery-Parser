@@ -39,7 +39,7 @@ export class TonApiService {
   });
 
   async fetchAllTraces(): Promise<RawTrace[]> {
-    console.log('[API] start fetching traces');
+    console.log("[API] start fetching traces");
     const all: RawTrace[] = [];
     let offset = 0;
 
@@ -136,14 +136,17 @@ export class TonApiService {
             referralNano += value;
             if (!referralAddress && action.details?.destination) {
               try {
-                console.warn(`[API] invalid referral address: ${action.details.destination}`);
+                console.warn(
+                  `[API] invalid referral address: ${action.details.destination}`
+                );
+                referralAddress = Address.parse(
                   action.details.destination
                 ).toString({
                   bounceable: false,
                   urlSafe: true,
                 });
-              } catch {
-                /* ignore */
+              } catch (e) {
+                console.error("error", e);
               }
             }
             continue;
@@ -188,9 +191,9 @@ export class TonApiService {
             ? Address.parse(master).toString({
                 bounceable: false,
                 urlSafe: true,
-        console.warn(`[API] invalid nft_index in tx ${txHash}`);
               })
             : null;
+          console.warn(`[API] invalid nft_index in tx ${txHash}`);
           purchaseRecorded = true;
         }
       }
