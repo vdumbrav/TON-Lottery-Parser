@@ -25,6 +25,8 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `winTonAmount` — actual TON amount transferred for the prize
   - `referralAmount` — referral payout in TON if present
   - `referralAddress` — wallet that received the referral payout
+  - `buyTonAmount` — TON amount the participant paid for the ticket
+  - `buyJettonAmount` — jetton amount paid for the ticket if applicable
 
 - **Prize logic**: prizes are detected by comments in `ton_transfer` actions, matched via:
 
@@ -109,6 +111,8 @@ yarn start
 | winTonAmount      | Actual TON amount transferred for the prize |
 | referralAmount    | Referral payout amount in TON |
 | referralAddress   | Wallet that received the referral payout |
+| buyTonAmount      | TON amount the participant paid for the ticket |
+| buyJettonAmount   | Jetton amount paid for the ticket if applicable |
 ---
 
 ## Developer Notes
@@ -122,6 +126,9 @@ yarn start
 
 - Traces with a valid prize but no `nft_mint` (e.g. manual jackpot) are included
 - NFT-related fields will be `null` in prize-only traces
+- `winTonAmount` > 0 indicates the prize transfer was executed
+- `referralAmount` > 0 confirms the referral payout
+- `buyTonAmount` and `buyJettonAmount` capture the ticket purchase value
 
 ---
 
