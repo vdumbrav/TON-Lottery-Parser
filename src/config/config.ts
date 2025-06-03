@@ -13,4 +13,5 @@ export const CONFIG = {
   pageLimit: parseInt(process.env.PAGE_LIMIT || "50", 10),
   csvPath: "data/lottery.csv",
   statePath: "data/state.json",
+  debug: process.env.DEBUG === "true" || process.env.DEBUG === "1",
 } as const;

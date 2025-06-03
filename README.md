@@ -19,7 +19,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `timestamp` — Unix time of the event
   - `txHash` — hex-encoded root transaction hash
   - `lt` — logical time of the trace
-  - `buyAmount` — amount paid to buy the ticket
+  - `buyAmount` — ticket price paid by the participant (in TON or token units)
   - `buyCurrency` — currency used for the ticket purchase (e.g. `TON`)
   - `buyMasterAddress` — jetton master address if a token was used
   - `isWin` — `true` if the trace includes a prize transfer
@@ -67,6 +67,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
 git clone <repo-url>
 cd ton-lottery-parser
 npm install
+npm run build # compile TypeScript
 ```
 
 Create a `.env`:
@@ -106,7 +107,7 @@ yarn start
 | timestamp         | Unix timestamp of mint or prize payout                      |
 | txHash            | Root transaction hash (hex-encoded)                         |
 | lt                | Logical time of the trace                                   |
-| buyAmount         | Amount paid to buy the ticket |
+| buyAmount         | Ticket price paid in TON or tokens |
 | buyCurrency       | Currency used for the ticket purchase |
 | buyMasterAddress  | Jetton master address for the purchase |
 | isWin             | Boolean — `true` if a prize was transferred                 |
@@ -128,6 +129,7 @@ yarn start
 
 - Traces with a valid prize but no `nft_mint` (e.g. manual jackpot) are included
 - NFT-related fields will be `null` in prize-only traces
+- Set `DEBUG=true` in your `.env` to enable verbose API logging
 
 ---
 

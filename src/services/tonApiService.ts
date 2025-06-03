@@ -27,12 +27,16 @@ export class TonApiService {
   });
 
   async fetchAllTraces(): Promise<RawTrace[]> {
-    console.log(`[API] ▶ Fetching traces for ${CONFIG.contractAddress}`);
+    if (CONFIG.debug) {
+      console.log(`[API] ▶ Fetching traces for ${CONFIG.contractAddress}`);
+    }
     const all: RawTrace[] = [];
     let offset = 0;
 
     while (true) {
-      console.log(`[API] 🔄 offset=${offset}, limit=${CONFIG.pageLimit}`);
+      if (CONFIG.debug) {
+        console.log(`[API] 🔄 offset=${offset}, limit=${CONFIG.pageLimit}`);
+      }
       const { data } = await this.client.get("/traces", {
         params: {
           account: CONFIG.contractAddress,
@@ -43,14 +47,18 @@ export class TonApiService {
       });
 
       const traces = data.traces as RawTrace[];
-      console.log(`[API] ✅ Got ${traces.length} traces`);
+      if (CONFIG.debug) {
+        console.log(`[API] ✅ Got ${traces.length} traces`);
+      }
 
       if (!traces.length) break;
       all.push(...traces);
       offset += CONFIG.pageLimit;
     }
 
-    console.log(`[API] 📦 Total traces fetched: ${all.length}`);
+    if (CONFIG.debug) {
+      console.log(`[API] 📦 Total traces fetched: ${all.length}`);
+    }
     return all;
   }
 
@@ -66,6 +74,10 @@ export class TonApiService {
     }
 
     const txHash = this.b64ToHex(rootB64);
+    const contractAddr = Address.parse(CONFIG.contractAddress).toString({
+      bounceable: false,
+      urlSafe: true,
+    });
 
     let winComment: string | null = null;
     let winAmount = 0;
@@ -82,7 +94,11 @@ export class TonApiService {
       const comment = action.details?.comment;
 
       // detect ticket purchase (incoming transfer to the contract)
-      if (action.details?.destination === CONFIG.contractAddress) {
+      if (
+        action.details?.destination &&
+        Address.parse(action.details.destination).toString({ bounceable: false, urlSafe: true }) === contractAddr &&
+        value > 0
+      ) {
         buyAmount += ton;
         if (!buyCurrency) {
           if (action.type === "ton_transfer") {
@@ -98,7 +114,9 @@ export class TonApiService {
             }
           }
         }
-        console.log(`[API] 🎟️ Ticket purchase detected: ${ton} ${buyCurrency}`);
+        if (CONFIG.debug) {
+          console.log(`[API] 🎟️ Ticket purchase detected: ${ton} ${buyCurrency}`);
+        }
       }
 
       if (action.type !== "ton_transfer") continue;
@@ -107,9 +125,11 @@ export class TonApiService {
         winAmount = PRIZE_MAP[comment];
         winComment = comment;
         winTonAmount += ton;
-        console.log(
-          `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
-        );
+        if (CONFIG.debug) {
+          console.log(
+            `[API] 🎉 Win detected: ${comment} → ${winAmount} USDT, ${ton} TON`
+          );
+        }
       } else if (comment === "referral") {
         referralAmount += ton;
         if (!referralAddress && action.details?.destination) {
@@ -126,7 +146,9 @@ export class TonApiService {
             );
           }
         }
-        console.log(`[API] 🤝 Referral detected: ${ton} TON`);
+        if (CONFIG.debug) {
+          console.log(`[API] 🤝 Referral detected: ${ton} TON`);
+        }
       }
     }
 
@@ -200,7 +222,9 @@ export class TonApiService {
 
     // 🎯 Case: prize only (no mint)
     if (winAmount > 0) {
-      console.log(`[API] 🎯 Prize-only trace: ${txHash}`);
+      if (CONFIG.debug) {
+        console.log(`[API] 🎯 Prize-only trace: ${txHash}`);
+      }
       return {
         participant,
         nftAddress: null,
@@ -221,7 +245,9 @@ export class TonApiService {
       };
     }
 
-    console.log(`[API] ⛔ Skipped trace ${txHash} (no nft_mint or prize)`);
+    if (CONFIG.debug) {
+      console.log(`[API] ⛔ Skipped trace ${txHash} (no nft_mint or prize)`);
+    }
     return null;
   }
 }
