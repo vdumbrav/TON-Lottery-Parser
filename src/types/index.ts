@@ -2,6 +2,7 @@ export interface TraceActionDetails {
   source?: string;
   destination?: string;
   value?: string;
+  extra_currencies?: Record<string, any>;
   comment?: string | null; // Can be null
   owner?: string;
   nft_item?: string;
@@ -97,4 +98,10 @@ export interface LotteryTx {
   referralAmount: number | null;
   /** Address that received the referral payout if present */
   referralAddress: string | null;
+  /** Amount the participant paid to buy the ticket (in token units) */
+  buyAmount: number | null;
+  /** Currency of the purchase ("TON" or jetton master address) */
+  currency: string | null;
+  /** Jetton master address if purchase was made with a jetton */
+  masterAddress: string | null;
 }

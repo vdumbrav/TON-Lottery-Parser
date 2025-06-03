@@ -4,6 +4,10 @@ import { CONFIG } from "../config/config.js";
 import { RawTrace, LotteryTx } from "../types/index.js";
 import { Address } from "@ton/core";
 
+const CONTRACT_ADDRESS_NORMALIZED = Address.parse(
+  CONFIG.contractAddress
+).toString({ bounceable: false, urlSafe: true });
+
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
   x3: 25,
@@ -67,6 +71,9 @@ export class TonApiService {
     let winTonAmount = 0;
     let referralAmount = 0;
     let referralAddress: string | null = null;
+    let buyAmount: number | null = null;
+    let currency: string | null = null;
+    let masterAddress: string | null = null;
 
     for (const action of trace.actions) {
       if (action.type !== "ton_transfer") continue;
@@ -125,6 +132,45 @@ export class TonApiService {
       return null;
     }
 
+    for (const action of trace.actions) {
+      if (action.type !== "call_contract") continue;
+      const src = action.details?.source;
+      const dest = action.details?.destination;
+      if (!src || !dest) continue;
+      try {
+        const srcNorm = Address.parse(src).toString({
+          bounceable: false,
+          urlSafe: true,
+        });
+        const destNorm = Address.parse(dest).toString({
+          bounceable: false,
+          urlSafe: true,
+        });
+        if (srcNorm !== participant || destNorm !== CONTRACT_ADDRESS_NORMALIZED)
+          continue;
+      } catch {
+        continue;
+      }
+
+      if (
+        action.details.extra_currencies &&
+        Object.keys(action.details.extra_currencies).length > 0
+      ) {
+        const [master, valRaw] = Object.entries(
+          action.details.extra_currencies
+        )[0] as [string, any];
+        const val =
+          typeof valRaw === "string" ? valRaw : (valRaw as any).value ?? "0";
+        buyAmount = Number(val) / 1e9;
+        currency = master;
+        masterAddress = master;
+      } else if (action.details.value) {
+        buyAmount = Number(action.details.value) / 1e9;
+        currency = "TON";
+      }
+      break;
+    }
+
     // 🎯 Case: valid mint
     if (
       mint &&
@@ -164,6 +210,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount,
+        currency,
+        masterAddress,
       };
     }
 
@@ -184,6 +233,9 @@ export class TonApiService {
         winTonAmount: winTonAmount || null,
         referralAmount: referralAmount || null,
         referralAddress,
+        buyAmount,
+        currency,
+        masterAddress,
       };
     }
 
