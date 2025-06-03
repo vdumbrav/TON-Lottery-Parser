@@ -15,6 +15,11 @@ const PRIZE_MAP: Record<string, number> = {
   "Jackpot winner": 10000,
 };
 
+/** Mapping of jetton master addresses to human readable symbols */
+const MASTER_SYMBOLS: Record<string, string> = {
+  // Example: 'EQB......': 'USDT'
+};
+
 export class TonApiService {
   private client = axios.create({
     baseURL: CONFIG.apiEndpoint,
@@ -69,6 +74,7 @@ export class TonApiService {
     let referralAddress: string | null = null;
     let buyAmount = 0;
     let buyCurrency: string | null = null;
+    let buyMasterAddress: string | null = null;
 
     for (const action of trace.actions) {
       const value = Number(action.details?.value) || 0;
@@ -79,7 +85,18 @@ export class TonApiService {
       if (action.details?.destination === CONFIG.contractAddress) {
         buyAmount += ton;
         if (!buyCurrency) {
-          buyCurrency = action.type === "ton_transfer" ? "TON" : action.type;
+          if (action.type === "ton_transfer") {
+            buyCurrency = "TON";
+          } else {
+            buyMasterAddress = action.details?.master || null;
+            if (buyMasterAddress && MASTER_SYMBOLS[buyMasterAddress]) {
+              buyCurrency = MASTER_SYMBOLS[buyMasterAddress];
+            } else if (buyMasterAddress) {
+              buyCurrency = buyMasterAddress;
+            } else {
+              buyCurrency = action.type;
+            }
+          }
         }
         console.log(`[API] 🎟️ Ticket purchase detected: ${ton} ${buyCurrency}`);
       }
@@ -171,6 +188,7 @@ export class TonApiService {
         lt: trace.start_lt,
         buyAmount: buyAmount || null,
         buyCurrency,
+        buyMasterAddress,
         isWin: winAmount > 0,
         winComment,
         winAmount,
@@ -193,6 +211,7 @@ export class TonApiService {
         lt: trace.start_lt,
         buyAmount: buyAmount || null,
         buyCurrency,
+        buyMasterAddress,
         isWin: true,
         winComment,
         winAmount,

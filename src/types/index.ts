@@ -8,6 +8,7 @@ export interface TraceActionDetails {
   nft_collection?: string;
   nft_item_index?: string; // API returns as string, needs conversion
   opcode?: string;
+  master?: string; // Jetton master address for token transfers
   // ... other possible fields
 }
 
@@ -101,4 +102,6 @@ export interface LotteryTx {
   buyAmount: number | null;
   /** Currency used for the ticket purchase, e.g. `TON` or jetton name */
   buyCurrency: string | null;
+  /** Jetton master address for the ticket purchase if a token was used */
+  buyMasterAddress: string | null;
 }

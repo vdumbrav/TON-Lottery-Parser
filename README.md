@@ -21,6 +21,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `lt` — logical time of the trace
   - `buyAmount` — amount paid to buy the ticket
   - `buyCurrency` — currency used for the ticket purchase (e.g. `TON`)
+  - `buyMasterAddress` — jetton master address if a token was used
   - `isWin` — `true` if the trace includes a prize transfer
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
   - `winAmount` — prize in USDT equivalent (e.g. `700`)
@@ -107,6 +108,7 @@ yarn start
 | lt                | Logical time of the trace                                   |
 | buyAmount         | Amount paid to buy the ticket |
 | buyCurrency       | Currency used for the ticket purchase |
+| buyMasterAddress  | Jetton master address for the purchase |
 | isWin             | Boolean — `true` if a prize was transferred                 |
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner` |
 | winAmount         | Parsed prize value in USDT or equivalent                    |
