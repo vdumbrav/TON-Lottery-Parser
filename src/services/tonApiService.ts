@@ -69,6 +69,7 @@ export class TonApiService {
     let referralAddress: string | null = null;
     let buyAmount = 0;
     let buyCurrency: string | null = null;
+    let buyMasterAddress: string | null = null;
 
     const firstTx = trace.transactions_order?.[0];
     const rawSource = firstTx
@@ -141,6 +142,7 @@ export class TonApiService {
         ) {
           buyAmount += ton;
           buyCurrency = "TON";
+          buyMasterAddress = null;
           console.log(`[API] 🎟️ Ticket purchase detected: ${ton} TON`);
         }
       } else if (action.type === "jetton_transfer") {
@@ -152,6 +154,7 @@ export class TonApiService {
         );
         const amount = value / 10 ** decimals;
         const symbol = (action.details as any)?.jetton?.symbol ?? "JETTON";
+        const master = (action.details as any)?.jetton?.master ?? null;
         if (
           dest &&
           src &&
@@ -162,6 +165,9 @@ export class TonApiService {
         ) {
           buyAmount += amount;
           buyCurrency = symbol;
+          buyMasterAddress = master
+            ? Address.parse(master).toString({ bounceable: false, urlSafe: true })
+            : null;
           console.log(
             `[API] 🎟️ Ticket purchase detected: ${amount} ${symbol}`
           );
@@ -212,6 +218,7 @@ export class TonApiService {
         referralAddress,
         buyAmount: buyAmount || null,
         buyCurrency,
+        buyMasterAddress,
       };
     }
 
@@ -234,6 +241,7 @@ export class TonApiService {
         referralAddress,
         buyAmount: buyAmount || null,
         buyCurrency,
+        buyMasterAddress,
       };
     }
 

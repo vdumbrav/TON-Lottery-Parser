@@ -101,4 +101,6 @@ export interface LotteryTx {
   buyAmount: number | null;
   /** Currency used for the purchase (e.g. `TON` or jetton symbol) */
   buyCurrency: string | null;
+  /** Jetton master address if the ticket was bought with a jetton */
+  buyMasterAddress: string | null;
 }
