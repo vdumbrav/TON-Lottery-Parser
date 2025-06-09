@@ -44,6 +44,8 @@ export interface JettonTransferDetailsV3 extends TraceActionDetails {
   amount: string;
   sender_jetton_wallet: string;
   receiver_jetton_wallet: string;
+  forward_payload?: string | null;
+  forward_amount?: string;
 }
 
 export type AnyJettonDetails = JettonTransferDetails | JettonTransferDetailsV3;

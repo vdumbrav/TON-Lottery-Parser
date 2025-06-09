@@ -104,7 +104,7 @@ export class TonApiService {
     let winComment: string | null = null;
     let winAmount = 0;
     let winTonNano = 0n;
-    let referralNano = 0n;
+    let referralAmount = 0;
     let referralAddress: string | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
@@ -156,15 +156,12 @@ export class TonApiService {
             winTonNano += value;
             continue;
           } else if (prizeKey === "referral") {
-            referralNano += value;
+            referralAmount += nanoToTon(value);
             if (!referralAddress && action.details?.destination) {
               try {
                 referralAddress = Address.parse(
                   action.details.destination
-                ).toString({
-                  bounceable: false,
-                  urlSafe: true,
-                });
+                ).toString({ bounceable: false, urlSafe: true });
               } catch {
                 console.warn(
                   `[API] invalid referral address: ${action.details.destination}`
@@ -206,10 +203,8 @@ export class TonApiService {
           const decimals = readDecimals(tokenMeta);
           const symbol = tokenMeta?.[0]?.symbol ?? "JETTON";
           const amount = Number(details.amount) / 10 ** decimals;
-          const fwd = this.parseForwardPayload(details.forward_payload);
-          const fwdAmt = details.forward_amount
-            ? BigInt(details.forward_amount)
-            : 0n;
+          const fwd = this.parseForwardPayload(details.forward_payload || undefined);
+          const fwdAmt = details.forward_amount ? BigInt(details.forward_amount) : 0n;
 
           if (
             !purchaseRecorded &&
@@ -231,7 +226,7 @@ export class TonApiService {
                 winComment = `code${fwd.code}`;
               }
             } else if (fwd.op === OP.SEND_REFF) {
-              referralNano += fwdAmt;
+              referralAmount += amount;
               referralAddress = destNorm;
             }
           }
@@ -299,7 +294,7 @@ export class TonApiService {
         winComment,
         winAmount,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralAmount: referralAmount ? referralAmount : null,
         referralAddress,
         buyAmount,
         buyCurrency,
@@ -321,7 +316,7 @@ export class TonApiService {
         winComment,
         winAmount,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralAmount: referralAmount ? referralAmount : null,
         referralAddress,
         buyAmount,
         buyCurrency,

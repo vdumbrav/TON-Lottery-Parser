@@ -9,7 +9,7 @@ export const CONFIG = {
     "956da4d618bdc3f356234bb971da09cc8c9ae369e8cb3fdfcb6520a26f26b48f",
   contractAddress:
     process.env.TON_CONTRACT_ADDRESS ||
-    "0:E40621EC63154DB9E4612A5B3DD4309A0BB214E485D66B0BE6FA207D43B12050",
+    "kQDdtZoIg8gsppYJOe8mlBbyTz_5kFdEoofa4fo9WIN_uzKV",
   pageLimit: parseInt(process.env.PAGE_LIMIT || "50", 10),
   csvPath: "data/lottery.csv",
   statePath: "data/state.json",
