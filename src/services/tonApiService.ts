@@ -41,7 +41,6 @@ export class TonApiService {
   });
   private jettonMeta: Record<string, any> = {};
 
-
   private jetAmount(raw: string | undefined, decimals: number): number {
     return raw ? Number(raw) / 10 ** decimals : 0;
   }
