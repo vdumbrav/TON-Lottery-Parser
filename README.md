@@ -21,7 +21,9 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `lt` — logical time of the trace
   - `isWin` — `true` if the trace includes a prize transfer
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
-  - `winAmount` — prize in USDT equivalent (e.g. `700`)
+  - `winAmount` — prize in TON (or null if Jetton-only)
+  - `winJettonAmount` — Jetton prize amount (if present)
+  - `winJettonSymbol` — Jetton symbol for prize (e.g. `USDT`)
   - `winTonAmount` — actual TON amount transferred for the prize
   - `referralAmount` — referral payout amount in TON or jetton (e.g. `USDT`) if present
   - `referralAddress` — wallet that received the referral payout
@@ -108,7 +110,9 @@ yarn start
 | lt                | Logical time of the trace                                           |
 | isWin             | Boolean — `true` if a prize was transferred                         |
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner`         |
-| winAmount         | Parsed prize value in USDT or equivalent                            |
+| winAmount         | Prize amount in TON (or null if Jetton-only)                        |
+| winJettonAmount   | Prize amount if paid in jetton                                      |
+| winJettonSymbol   | Symbol of the jetton prize (e.g. `USDT`)                            |
 | winTonAmount      | Actual TON amount transferred for the prize                         |
 | referralAmount    | Referral payout amount in TON or jetton (e.g. `USDT`)               |
 | referralAddress   | Wallet that received the referral payout                            |
