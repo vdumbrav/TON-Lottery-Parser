@@ -11,7 +11,7 @@ export interface TraceActionDetails {
 }
 
 export interface JettonInfo {
-  decimals?: number;
+  decimals?: number | string;
   symbol?: string;
   master?: string;
 }
@@ -102,7 +102,9 @@ export interface LotteryTx {
   lt: string;
   isWin: boolean;
   winComment: string | null;
-  winAmount: number;
+  winAmount: number | null;
+  winJettonAmount: number | null;
+  winJettonSymbol: string | null;
   winTonAmount: number | null;
   referralAmount: number | null;
   referralAddress: string | null;

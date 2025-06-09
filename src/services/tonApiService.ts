@@ -40,12 +40,16 @@ export class TonApiService {
   }
 
   private jetAmount(raw?: string, decimals?: number): number {
-    return raw ? Number(raw) / 10 ** (decimals ?? 9) : 0;
+    if (!raw) return 0;
+    const dec = decimals ?? 9;
+    const num = Number(raw) / 10 ** dec;
+    return Math.round(num * 1e6) / 1e6;
   }
 
   private readDecimals(asset: string): number {
-    const decimals = this.jettonMeta?.[asset]?.token_info?.[0]?.extra?.decimals;
-    return typeof decimals === "number" ? decimals : 9;
+    const raw = this.jettonMeta?.[asset]?.token_info?.[0]?.extra?.decimals;
+    const decimals = Number(raw);
+    return Number.isFinite(decimals) ? decimals : 9;
   }
 
   async fetchAllTraces(): Promise<RawTrace[]> {
@@ -87,7 +91,7 @@ export class TonApiService {
 
     if (isJettonV2(d)) {
       const jet = d.jetton ?? {};
-      const decimals = jet.decimals ?? 9;
+      const decimals = Number(jet.decimals ?? 9);
       const symbol = jet.symbol ?? "JETTON";
       const master = jet.master ? this.normalizeAddress(jet.master) : null;
       return {
@@ -123,7 +127,9 @@ export class TonApiService {
     }
 
     let winComment: string | null = null;
-    let winAmount = 0;
+    let winAmount: number | null = null;
+    let winJettonAmount: number | null = null;
+    let winJettonSymbol: string | null = null;
     let winTonNano = 0n;
     let referralTonAmount: number | null = null;
     let referralTonAddress: string | null = null;
@@ -195,7 +201,8 @@ export class TonApiService {
             jetton.sender === this.contract &&
             jetton.receiver === participant
           ) {
-            winAmount = jetton.amount;
+            winJettonAmount = jetton.amount;
+            winJettonSymbol = jetton.symbol;
             winComment = `${jetton.amount} ${jetton.symbol}`;
             continue;
           }
@@ -256,9 +263,11 @@ export class TonApiService {
         timestamp: trace.start_utime,
         txHash,
         lt: trace.start_lt,
-        isWin: winAmount > 0,
+        isWin: (winAmount ?? 0) > 0 || winJettonAmount !== null,
         winComment,
         winAmount,
+        winJettonAmount,
+        winJettonSymbol,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: finalReferralAmount,
         referralAddress,
@@ -268,7 +277,7 @@ export class TonApiService {
       };
     }
 
-    if (winAmount > 0) {
+    if ((winAmount ?? 0) > 0 || winJettonAmount !== null) {
       return {
         participant,
         nftAddress: null,
@@ -280,6 +289,8 @@ export class TonApiService {
         isWin: true,
         winComment,
         winAmount,
+        winJettonAmount,
+        winJettonSymbol,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: finalReferralAmount,
         referralAddress,
