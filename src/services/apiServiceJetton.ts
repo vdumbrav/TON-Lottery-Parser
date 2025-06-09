@@ -246,14 +246,21 @@ export class ApiServiceJetton {
       lt: trace.start_lt,
     };
 
-    if (mintAction) {
-      const nftAddress = normalizeAddress(
-        (mintAction as any).details.nft_item
-      );
+    if (
+      mintAction &&
+      mintAction.details &&
+      typeof mintAction.details.nft_item === "string" &&
+      typeof mintAction.details.nft_collection === "string" &&
+      typeof mintAction.details.nft_item_index === "string"
+    ) {
+      const nftIndex = Number(mintAction.details.nft_item_index);
+      if (Number.isNaN(nftIndex)) return null;
+
+      const nftAddress = normalizeAddress(mintAction.details.nft_item);
       const collectionAddress = normalizeAddress(
-        (mintAction as any).details.nft_collection
+        mintAction.details.nft_collection
       );
-      const nftIndex = Number((mintAction as any).details.nft_item_index);
+
       return {
         ...baseTransaction,
         nftAddress,

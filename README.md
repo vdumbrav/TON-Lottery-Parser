@@ -82,6 +82,7 @@ PAGE_LIMIT=50
 
 ### Type checking
 
+First install the dev dependencies with `npm install`.
 Run `npm run build` to compile the TypeScript sources and ensure all
 types are correct. The command emits the compiled files into `dist/`.
 
