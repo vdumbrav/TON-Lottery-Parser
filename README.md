@@ -1,6 +1,6 @@
 # TON Lottery Parser
 
-A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a TON smart-contract lottery on Testnet, parses them, and appends structured records into a CSV file for further analysis.
+A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a USDT-based TON smart-contract lottery on Testnet, parses them, and appends structured records into a CSV file for further analysis.
 
 ---
 
@@ -74,7 +74,7 @@ Create a `.env`:
 ```dotenv
 TONCENTER_API_URL=https://testnet.toncenter.com/api/v3
 TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
-TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
+TON_CONTRACT_ADDRESS=0:E40621EC63154DB9E4612A5B3DD4309A0BB214E485D66B0BE6FA207D43B12050
 PAGE_LIMIT=50
 ```
 
