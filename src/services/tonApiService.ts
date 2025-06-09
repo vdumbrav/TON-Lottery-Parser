@@ -13,49 +13,65 @@ import { nanoToTon, delay } from "../core/utils.js";
 const OP_PRIZ = 0x5052495a;
 const OP_REFF = 0x52454646;
 
-function isJettonV2(d: TraceActionDetails): d is JettonTransferDetails {
-  return typeof (d as any)?.jetton === "object";
+function isJettonTransferV2(
+  details: TraceActionDetails
+): details is JettonTransferDetails {
+  return typeof (details as any)?.jetton === "object";
 }
 
-function isJettonV3(d: TraceActionDetails): d is JettonTransferDetailsV3 {
+function isJettonTransferV3(
+  details: TraceActionDetails
+): details is JettonTransferDetailsV3 {
   return (
-    typeof d === "object" &&
-    typeof (d as any).asset === "string" &&
-    typeof (d as any).sender === "string" &&
-    typeof (d as any).receiver === "string"
+    typeof details === "object" &&
+    typeof (details as any).asset === "string" &&
+    typeof (details as any).sender === "string" &&
+    typeof (details as any).receiver === "string"
   );
 }
 
 export class TonApiService {
-  private client = axios.create({
+  private readonly apiClient = axios.create({
     baseURL: CONFIG.apiEndpoint,
     timeout: 10000,
     params: { api_key: CONFIG.apiKey },
   });
 
-  private contract = Address.parse(CONFIG.contractAddress).toString({
+  private readonly contractAddress = Address.parse(
+    CONFIG.contractAddress
+  ).toString({
     bounceable: false,
     urlSafe: true,
   });
 
-  private jettonMeta: Record<string, any> = {};
+  private jettonMetadata: Record<string, any> = {};
 
-  private normalizeAddress(raw: string): string {
-    return Address.parse(raw).toString({ bounceable: false, urlSafe: true });
+  private normalizeAddress(rawAddress: string): string {
+    return Address.parse(rawAddress).toString({
+      bounceable: false,
+      urlSafe: true,
+    });
   }
 
-  private jetAmount(raw?: string, decimals?: number): number {
-    if (!raw) return 0;
-    const dec = decimals ?? 9;
-    const num = Number(raw) / 10 ** dec;
-    return Math.round(num * 1e6) / 1e6;
+  private convertJettonAmount(rawAmount?: string, decimals = 9): number {
+    if (!rawAmount) return 0;
+    const amount = Number(rawAmount) / 10 ** decimals;
+    return Math.round(amount * 1e6) / 1e6;
+  }
+
+  private isReferral(details: any): boolean {
+    const payloadCandidate: unknown = details?.forward_payload;
+    return (
+      typeof payloadCandidate === "string" &&
+      payloadCandidate.includes("ClJFRkY")
+    );
   }
 
   async fetchAllTraces(): Promise<RawTrace[]> {
-    const all: RawTrace[] = [];
+    const traces: RawTrace[] = [];
     let offset = 0;
     while (true) {
-      const { data } = await this.client.get("/traces", {
+      const { data } = await this.apiClient.get("/traces", {
         params: {
           account: CONFIG.contractAddress,
           limit: CONFIG.pageLimit,
@@ -63,259 +79,230 @@ export class TonApiService {
           include_actions: true,
         },
       });
-      const traces: RawTrace[] = data.traces || [];
-      if (!traces.length) break;
-      all.push(...traces);
-      if (data.metadata) Object.assign(this.jettonMeta, data.metadata);
+      const batch: RawTrace[] = data.traces ?? [];
+      if (!batch.length) break;
+      traces.push(...batch);
+      if (data.metadata) Object.assign(this.jettonMetadata, data.metadata);
       offset += CONFIG.pageLimit;
       await delay(1000);
     }
-    return all;
+    return traces;
   }
 
-  private getJettonDetails(d: TraceActionDetails) {
-    if (isJettonV3(d)) {
-      const jetton = d as JettonTransferDetailsV3;
+  private extractJettonTransfer(details: TraceActionDetails) {
+    if (isJettonTransferV3(details)) {
+      const transfer = details as JettonTransferDetailsV3;
       let symbol = "JETTON";
       let decimals = 9;
-      const meta = this.jettonMeta?.[jetton.asset]?.token_info?.[0];
-
-      if (meta) {
-        symbol = typeof meta.symbol === "string" ? meta.symbol : symbol;
-        decimals = Number(meta.extra?.decimals ?? decimals);
+      const metadata = this.jettonMetadata?.[transfer.asset]?.token_info?.[0];
+      if (metadata) {
+        if (typeof metadata.symbol === "string") symbol = metadata.symbol;
+        decimals = Number(metadata.extra?.decimals ?? decimals);
       }
-
-      const master = this.normalizeAddress(jetton.asset);
-
       return {
-        sender: this.normalizeAddress(jetton.sender),
-        receiver: this.normalizeAddress(jetton.receiver),
-        amount: this.jetAmount(jetton.amount, decimals),
+        sender: this.normalizeAddress(transfer.sender),
+        receiver: this.normalizeAddress(transfer.receiver),
+        amount: this.convertJettonAmount(transfer.amount, decimals),
         symbol,
-        master,
+        master: this.normalizeAddress(transfer.asset),
       };
     }
-
-    if (isJettonV2(d)) {
-      const jetton = d as JettonTransferDetails;
-      const info = jetton.jetton ?? {};
+    if (isJettonTransferV2(details)) {
+      const transfer = details as JettonTransferDetails;
+      const info = transfer.jetton ?? {};
       const decimals = Number(info.decimals ?? 9);
       const symbol = typeof info.symbol === "string" ? info.symbol : "JETTON";
-      const master = info.master ? this.normalizeAddress(info.master) : null;
-
+      const masterAddress = info.master
+        ? this.normalizeAddress(info.master)
+        : null;
       return {
-        sender: this.normalizeAddress(jetton.source!),
-        receiver: this.normalizeAddress(jetton.destination!),
-        amount: this.jetAmount(jetton.value, decimals),
+        sender: this.normalizeAddress(transfer.source!),
+        receiver: this.normalizeAddress(transfer.destination!),
+        amount: this.convertJettonAmount(transfer.value, decimals),
         symbol,
-        master,
+        master: masterAddress,
       };
     }
-
-    throw new Error("Unknown jetton details format");
+    throw new Error("Unknown jetton transfer format");
   }
 
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
     if (!trace.actions || !trace.transactions_order) return null;
 
-    const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
-    const txHash = Buffer.from(rootB64, "base64").toString("hex");
-    const firstTx = trace.transactions_order?.[0];
-    const rawSource = firstTx
-      ? trace.transactions[firstTx]?.in_msg?.source ??
-        trace.transactions[firstTx]?.account ??
-        trace.trace?.in_msg?.source
-      : null;
+    const traceHashBase64 = trace.trace?.tx_hash ?? trace.trace_id;
+    const transactionHashHex = Buffer.from(traceHashBase64, "base64").toString(
+      "hex"
+    );
+    const firstTransactionId = trace.transactions_order[0];
+    const firstTransaction = trace.transactions[firstTransactionId];
+    const initialSource =
+      firstTransaction?.in_msg?.source ??
+      firstTransaction?.account ??
+      trace.trace?.in_msg?.source;
+    if (!initialSource) return null;
 
-    if (!rawSource) {
-      console.warn("Missing source address for trace:", trace.trace_id);
-      return null;
-    }
-
-    let participant: string;
+    let participantAddress: string;
     try {
-      participant = this.normalizeAddress(rawSource);
+      participantAddress = this.normalizeAddress(initialSource);
     } catch {
       return null;
     }
 
     let winComment: string | null = null;
-    let winAmount: number | null = null;
-    let winJettonAmount: number | null = null;
-    let winJettonSymbol: string | null = null;
-    let winTonNano = 0n;
+    let wonTonNano = 0n;
+    let wonJettonAmount: number | null = null;
+    let wonJettonSymbol: string | null = null;
     let referralTonAmount: number | null = null;
-    let referralTonAddress: string | null = null;
+    let referralTonReceiver: string | null = null;
     let referralJettonAmount: number | null = null;
-    let referralJettonAddress: string | null = null;
-    let referralAddress: string | null = null;
-    let buyAmount: number | null = null;
-    let buyCurrency: string | null = null;
-    let buyMasterAddress: string | null = null;
+    let referralJettonReceiver: string | null = null;
+    let purchaseAmount: number | null = null;
+    let purchaseCurrency: string | null = null;
+    let purchaseJettonMaster: string | null = null;
     let purchaseRecorded = false;
 
     for (const action of trace.actions) {
       if (action.type === "ton_transfer" || action.type === "call_contract") {
-        const dest = action.details?.destination;
-        const src = action.details?.source;
-        const destNorm = dest ? this.normalizeAddress(dest) : null;
-        const srcNorm = src ? this.normalizeAddress(src) : null;
-        const value = action.details?.value ? BigInt(action.details.value) : 0n;
-        const opcode = action.details?.opcode
-          ? Number(action.details.opcode)
+        const opcode =
+          action.details?.opcode !== undefined
+            ? Number(action.details.opcode)
+            : null;
+        const valueNano =
+          action.details?.value !== undefined
+            ? BigInt(action.details.value)
+            : 0n;
+        const destination = action.details?.destination
+          ? this.normalizeAddress(action.details.destination)
+          : null;
+        const source = action.details?.source
+          ? this.normalizeAddress(action.details.source)
           : null;
 
-        if (action.type === "ton_transfer" && opcode === OP_PRIZ) {
-          winAmount = nanoToTon(value);
-          winTonNano += value;
+        if (
+          !purchaseRecorded &&
+          destination === this.contractAddress &&
+          source === participantAddress &&
+          valueNano > 0n
+        ) {
+          purchaseAmount = nanoToTon(valueNano);
+          purchaseCurrency = "TON";
+          purchaseJettonMaster = null;
+          purchaseRecorded = true;
+          continue;
+        }
+        if (opcode === OP_PRIZ) {
+          wonTonNano += valueNano;
           winComment = "TON PRIZE";
           continue;
         }
-
         if (opcode === OP_REFF) {
-          referralTonAmount = nanoToTon(value);
-          if (!referralTonAddress && action.details?.destination) {
-            try {
-              referralTonAddress = this.normalizeAddress(
-                action.details.destination
-              );
-            } catch (e) {
-              console.log("Invalid referral address:", e);
-            }
-          }
+          referralTonAmount = nanoToTon(valueNano);
+          referralTonReceiver = destination;
+          continue;
+        }
+      }
+
+      if (action.type === "jetton_transfer") {
+        let transfer;
+        try {
+          transfer = this.extractJettonTransfer(action.details);
+        } catch {
           continue;
         }
 
         if (
           !purchaseRecorded &&
-          destNorm === this.contract &&
-          srcNorm === participant &&
-          value > 0n
+          transfer.sender === participantAddress &&
+          transfer.receiver === this.contractAddress
         ) {
-          buyAmount = nanoToTon(value);
-          buyCurrency = "TON";
-          buyMasterAddress = null;
+          purchaseAmount = transfer.amount;
+          purchaseCurrency = transfer.symbol;
+          purchaseJettonMaster = transfer.master;
           purchaseRecorded = true;
+          continue;
         }
-      } else if (action.type === "jetton_transfer") {
-        try {
-          const jetton = this.getJettonDetails(action.details);
-          if (
-            !purchaseRecorded &&
-            jetton.sender === participant &&
-            jetton.receiver === this.contract
-          ) {
-            buyAmount = jetton.amount;
-            buyCurrency = jetton.symbol;
-            buyMasterAddress = jetton.master;
-            purchaseRecorded = true;
-            continue;
+
+        if (transfer.sender === this.contractAddress) {
+          const referralDetected = this.isReferral(action.details as any);
+          if (referralDetected) {
+            referralJettonAmount =
+              (referralJettonAmount ?? 0) + transfer.amount;
+            referralJettonReceiver = transfer.receiver;
+          } else {
+            wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
+            wonJettonSymbol = transfer.symbol;
+            winComment = `${transfer.amount} ${transfer.symbol}`;
           }
-          if (
-            jetton.sender === this.contract &&
-            jetton.receiver === participant
-          ) {
-            winJettonAmount = jetton.amount;
-            winJettonSymbol = jetton.symbol;
-            winComment = `${jetton.amount} ${jetton.symbol}`;
-            continue;
-          }
-          if (
-            jetton.sender === this.contract &&
-            jetton.receiver !== participant
-          ) {
-            referralJettonAmount = (referralJettonAmount ?? 0) + jetton.amount;
-            referralJettonAddress = jetton.receiver;
-            continue;
-          }
-        } catch (e) {
-          console.log("Failed to parse jetton_transfer:", e);
+          continue;
         }
       }
     }
 
     let finalReferralAmount: number | null = null;
-    let finalReferralAddress: string | null = null;
-    const tonPositive = referralTonAmount !== null && referralTonAmount > 0;
-    const jettonPositive =
-      referralJettonAmount !== null && referralJettonAmount > 0;
-
-    if (tonPositive && jettonPositive) {
+    let finalReferralReceiver: string | null = null;
+    if (referralJettonAmount && referralJettonAmount > 0) {
       finalReferralAmount = referralJettonAmount;
-      finalReferralAddress = referralJettonAddress;
-    } else if (jettonPositive) {
-      finalReferralAmount = referralJettonAmount;
-      finalReferralAddress = referralJettonAddress;
-    } else if (tonPositive) {
+      finalReferralReceiver = referralJettonReceiver;
+    } else if (referralTonAmount && referralTonAmount > 0) {
       finalReferralAmount = referralTonAmount;
-      finalReferralAddress = referralTonAddress;
-    } else {
-      finalReferralAmount = referralJettonAmount ?? referralTonAmount ?? 0;
-      finalReferralAddress =
-        referralJettonAddress ?? referralTonAddress ?? null;
+      finalReferralReceiver = referralTonReceiver;
     }
 
-    referralAddress = finalReferralAddress;
+    const mintAction = trace.actions.find(
+      (action) => action.type === "nft_mint"
+    );
 
-    const mint = trace.actions.find((a) => a.type === "nft_mint");
-    if (
-      mint &&
-      mint.details.nft_item &&
-      mint.details.nft_collection &&
-      mint.details.nft_item_index
-    ) {
-      const nftAddress = this.normalizeAddress(mint.details.nft_item);
-      const collectionAddress = this.normalizeAddress(
-        mint.details.nft_collection
+    const baseTransaction = {
+      participant: participantAddress,
+      timestamp: trace.start_utime,
+      txHash: transactionHashHex,
+      lt: trace.start_lt,
+    };
+
+    if (mintAction) {
+      const nftAddress = this.normalizeAddress(
+        (mintAction as any).details.nft_item
       );
-      const nftIndex = parseInt(mint.details.nft_item_index, 10);
-      if (isNaN(nftIndex)) {
-        console.warn("Invalid NFT index:", mint.details.nft_item_index);
-        return null;
-      }
-
+      const collectionAddress = this.normalizeAddress(
+        (mintAction as any).details.nft_collection
+      );
+      const nftIndex = Number((mintAction as any).details.nft_item_index);
       return {
-        participant,
+        ...baseTransaction,
         nftAddress,
         collectionAddress,
         nftIndex,
-        timestamp: trace.start_utime,
-        txHash,
-        lt: trace.start_lt,
-        isWin: (winAmount ?? 0) > 0 || winJettonAmount !== null,
+        isWin: Boolean(winComment),
         winComment,
-        winAmount,
-        winJettonAmount,
-        winJettonSymbol,
-        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        winAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
+        winJettonAmount: wonJettonAmount ?? null,
+        winJettonSymbol: wonJettonSymbol ?? null,
+        winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
         referralAmount: finalReferralAmount,
-        referralAddress,
-        buyAmount,
-        buyCurrency,
-        buyMasterAddress,
+        referralAddress: finalReferralReceiver,
+        buyAmount: purchaseAmount,
+        buyCurrency: purchaseCurrency,
+        buyMasterAddress: purchaseJettonMaster,
       };
     }
 
-    if ((winAmount ?? 0) > 0 || winJettonAmount !== null) {
+    if (winComment || finalReferralAmount) {
       return {
-        participant,
+        ...baseTransaction,
         nftAddress: null,
         collectionAddress: null,
         nftIndex: null,
-        timestamp: trace.start_utime,
-        txHash,
-        lt: trace.start_lt,
-        isWin: true,
+        isWin: Boolean(winComment),
         winComment,
-        winAmount,
-        winJettonAmount,
-        winJettonSymbol,
-        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        winAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
+        winJettonAmount: wonJettonAmount ?? null,
+        winJettonSymbol: wonJettonSymbol ?? null,
+        winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
         referralAmount: finalReferralAmount,
-        referralAddress,
-        buyAmount,
-        buyCurrency,
-        buyMasterAddress,
+        referralAddress: finalReferralReceiver,
+        buyAmount: purchaseAmount,
+        buyCurrency: purchaseCurrency,
+        buyMasterAddress: purchaseJettonMaster,
       };
     }
 
