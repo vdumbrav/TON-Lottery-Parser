@@ -1,53 +1,35 @@
-/* ---------- ОБЩИЕ ТИПЫ ---------- */
 export interface TraceActionDetails {
-  // общие поля
   source?: string;
   destination?: string;
-  value?: string;            // ► старый формат
+  value?: string;
   comment?: string | null;
   owner?: string;
-
-  /* NFT-mint */
   nft_item?: string;
   nft_collection?: string;
   nft_item_index?: string;
   opcode?: string;
 }
 
-/* ---------- Jetton (v2) ---------- */
 export interface JettonInfo {
   decimals?: number;
   symbol?: string;
   master?: string;
 }
+
 export interface JettonTransferDetails extends TraceActionDetails {
-  jetton?: JettonInfo;       // ► было в v2
+  jetton?: JettonInfo;
 }
 
-/* ---------- Jetton (v3) ---------- */
 export interface JettonTransferDetailsV3 extends TraceActionDetails {
-  asset: string;             // мастер-адрес jetton
-  amount: string;            // целое в “nano” без точки
+  asset: string;
+  sender: string;
+  receiver: string;
   sender_jetton_wallet: string;
   receiver_jetton_wallet: string;
+  amount: string;
+  forward_payload?: string | null;
 }
 
-/* ---------- Метаданные трассы (v3) ---------- */
-export interface TokenInfo {
-  type: "jetton_masters" | string;
-  name?: string;
-  symbol?: string;
-  description?: string;
-  extra?: { decimals?: string;[k: string]: unknown };
-}
-export interface TraceMetadata {
-  [master: string]: {
-    is_indexed: boolean;
-    token_info: TokenInfo[];
-  };
-}
-
-/* ---------- Action ---------- */
 export interface TraceAction {
   trace_id: string;
   action_id: string;
@@ -58,27 +40,27 @@ export interface TraceAction {
   transactions: string[];
   success: boolean;
   type:
-  | "ton_transfer"
-  | "call_contract"
-  | "jetton_transfer"
-  | "nft_mint"
-  | "contract_deploy"
-  | string;
-  // теперь одно из трёх
-  details:
-  | TraceActionDetails
-  | JettonTransferDetails
-  | JettonTransferDetailsV3;
+    | "ton_transfer"
+    | "call_contract"
+    | "jetton_transfer"
+    | "nft_mint"
+    | "contract_deploy"
+    | string;
+  details: TraceActionDetails | JettonTransferDetails | JettonTransferDetailsV3;
   trace_external_hash: string;
 }
 
-/* ---------- Транзакции / трассы ---------- */
 export interface InMsg {
   hash: string;
   source: string | null;
   destination: string;
-  message_content?: { hash: string; body: string; decoded: any | null };
+  message_content?: {
+    hash: string;
+    body: string;
+    decoded: any | null;
+  };
 }
+
 export interface Transaction {
   account: string;
   hash: string;
@@ -108,11 +90,8 @@ export interface RawTrace {
   trace: { tx_hash: string; in_msg_hash: string; children: any[] };
   transactions_order: string[];
   transactions: { [tx_hash: string]: Transaction };
-  /*  v3 ►*/
-  metadata?: TraceMetadata;
 }
 
-/* ---------- Результат для БД ---------- */
 export interface LotteryTx {
   participant: string;
   nftAddress?: string | null;

@@ -4,16 +4,13 @@ import { CONFIG } from "../config/config.js";
 import {
   RawTrace,
   LotteryTx,
-  TraceAction,
-  TraceActionDetails,
   JettonTransferDetails,
+  TraceActionDetails,
   JettonTransferDetailsV3,
-  TokenInfo,
 } from "../types/index.js";
-import { Address, Cell, Slice } from "@ton/core";
+import { Address } from "@ton/core";
 import { nanoToTon, delay } from "../core/utils.js";
 
-/* ---------- prize-usd map ---------- */
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
   x3: 25,
@@ -22,46 +19,46 @@ const PRIZE_MAP: Record<string, number> = {
   x77: 700,
   x200: 1800,
   jp: 10000,
-  "jackpot winner": 10000,
+  "Jackpot winner": 10000,
 };
 
-/* ---------- type-guards ---------- */
-function isJettonV2(
-  d: TraceActionDetails
-): d is JettonTransferDetails {
+function isJettonV2(d: TraceActionDetails): d is JettonTransferDetails {
   return typeof (d as any)?.jetton === "object";
 }
 
-function isJettonV3(
-  d: TraceActionDetails
-): d is JettonTransferDetailsV3 {
-  return typeof (d as any)?.asset === "string";
+function isJettonV3(d: TraceActionDetails): d is JettonTransferDetailsV3 {
+  return (d as any)?.asset !== undefined;
 }
 
-function readDecimals(meta?: TokenInfo[]): number {
-  const raw = meta?.[0]?.extra?.decimals;
-  return raw ? Number(raw) : 9;
-}
-
-/* ---------- service ---------- */
 export class TonApiService {
   private client = axios.create({
     baseURL: CONFIG.apiEndpoint,
     timeout: 10_000,
     params: { api_key: CONFIG.apiKey },
   });
-
   private contract = Address.parse(CONFIG.contractAddress).toString({
     bounceable: false,
     urlSafe: true,
   });
+  private jettonMeta: Record<string, any> = {};
 
-  /* --------------------- fetchAll --------------------- */
+  private b64ToHex(b64: string): string {
+    return Buffer.from(b64, "base64").toString("hex");
+  }
+
+  private jetAmount(raw: string | undefined, decimals: number): number {
+    return raw ? Number(raw) / 10 ** decimals : 0;
+  }
+
+  private readDecimals(asset: string): number {
+    return Number(
+      this.jettonMeta?.[asset]?.token_info?.[0]?.extra?.decimals ?? 9
+    );
+  }
+
   async fetchAllTraces(): Promise<RawTrace[]> {
-    console.log("[API] start fetching traces");
     const all: RawTrace[] = [];
     let offset = 0;
-
     while (true) {
       const { data } = await this.client.get("/traces", {
         params: {
@@ -71,52 +68,41 @@ export class TonApiService {
           include_actions: true,
         },
       });
-
-      const traces = (data.traces as RawTrace[]) ?? [];
+      const traces: RawTrace[] = data.traces || [];
       if (!traces.length) break;
       all.push(...traces);
+      if (data.metadata) Object.assign(this.jettonMeta, data.metadata);
       offset += CONFIG.pageLimit;
       await delay(1_000);
     }
-
-    console.log(`[API] fetched ${all.length} traces`);
     return all;
   }
 
-  /* --------------------- helpers --------------------- */
-  private b64ToHex(b64: string): string {
-    return Buffer.from(b64, "base64").toString("hex");
-  }
-
-  /* --------------------- main mapper --------------------- */
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
-    if (!trace.actions?.length || !trace.transactions_order?.length) return null;
-
+    if (!trace.actions || !trace.transactions_order) return null;
     const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
     if (!rootB64) return null;
     const txHash = this.b64ToHex(rootB64);
 
-    /* ─── инициализация ─────────────────────────────── */
     let winComment: string | null = null;
     let winAmount = 0;
     let winTonNano = 0n;
-    let referralNano = 0n;
-    let referralAddr: string | null = null;
+    let referralAmount: number | null = null;
+    let referralAddress: string | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
-    let buyMaster: string | null = null;
-    let purchaseDone = false;
+    let buyMasterAddress: string | null = null;
 
-    /* ─── адрес участника (с первого tx) ─────────────── */
-    const firstTxKey = trace.transactions_order[0];
-    const rawSrc =
-      trace.transactions[firstTxKey]?.in_msg?.source ??
-      trace.transactions[firstTxKey]?.account;
-    if (!rawSrc) return null;
+    const firstTx = trace.transactions_order?.[0];
+    const rawSource = firstTx
+      ? trace.transactions[firstTx]?.in_msg?.source ??
+        trace.transactions[firstTx]?.account
+      : null;
+    if (!rawSource) return null;
 
     let participant: string;
     try {
-      participant = Address.parse(rawSrc).toString({
+      participant = Address.parse(rawSource).toString({
         bounceable: false,
         urlSafe: true,
       });
@@ -124,154 +110,172 @@ export class TonApiService {
       return null;
     }
 
-    /* ─── проходим по actions ────────────────────────── */
+    let purchaseRecorded = false;
+
     for (const action of trace.actions) {
-      switch (action.type) {
-        /* ----- TON transfer / call_contract ----------- */
-        case "ton_transfer":
-        case "call_contract": {
-          const d = action.details;
-          const dest = d.destination
-            ? Address.parse(d.destination).toString({ bounceable: false, urlSafe: true })
-            : null;
-          const src = d.source
-            ? Address.parse(d.source).toString({ bounceable: false, urlSafe: true })
-            : null;
-          const value = d.value ? BigInt(d.value) : 0n;
-
-          /* 🎁 приз / referral */
-          if (action.type === "ton_transfer") {
-            const comment = (d.comment ?? "").trim().toLowerCase();
-            if (comment in PRIZE_MAP) {
-              winAmount = PRIZE_MAP[comment];
-              winComment = comment;
-              winTonNano += value;
-              break;
-            }
-            if (comment === "referral") {
-              referralNano += value;
-              if (!referralAddr && d.destination) {
-                try {
-                  referralAddr = Address.parse(d.destination).toString({
-                    bounceable: false,
-                    urlSafe: true,
-                  });
-                } catch {/* ignore */ }
-              }
-              break;
-            }
+      if (action.type === "ton_transfer" || action.type === "call_contract") {
+        const dest = action.details?.destination;
+        const src = action.details?.source;
+        const destNorm = dest
+          ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const srcNorm = src
+          ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+          : null;
+        const value = action.details?.value ? BigInt(action.details.value) : 0n;
+        if (action.type === "ton_transfer") {
+          const comment = action.details?.comment;
+          const prizeKey = (comment ?? "").trim().toLowerCase();
+          const prizeUsd = PRIZE_MAP[prizeKey];
+          if (prizeUsd) {
+            winAmount = prizeUsd;
+            winComment = prizeKey;
+            winTonNano += value;
+            continue;
           }
-
-          /* 💳 покупка TON-ом */
-          if (
-            !purchaseDone &&
-            dest === this.contract &&
-            src === participant &&
-            value > 0n
-          ) {
-            buyAmount = nanoToTon(value);
-            buyCurrency = "TON";
-            buyMaster = null;
-            purchaseDone = true;
+          if (prizeKey === "referral") {
+            referralAmount = nanoToTon(value);
+            if (!referralAddress && action.details?.destination)
+              referralAddress = Address.parse(
+                action.details.destination
+              ).toString({ bounceable: false, urlSafe: true });
+            continue;
           }
-          break;
+        }
+        if (
+          !purchaseRecorded &&
+          destNorm === this.contract &&
+          srcNorm === participant &&
+          value > 0n
+        ) {
+          buyAmount = nanoToTon(value);
+          buyCurrency = "TON";
+          buyMasterAddress = null;
+          purchaseRecorded = true;
+        }
+      } else if (action.type === "jetton_transfer") {
+        const d = action.details as TraceActionDetails;
+        const srcAddr = Address.parse(
+          isJettonV3(d) ? (d as JettonTransferDetailsV3).sender : d.source!
+        ).toString({ bounceable: false, urlSafe: true });
+        const dstAddr = Address.parse(
+          isJettonV3(d)
+            ? (d as JettonTransferDetailsV3).receiver
+            : d.destination!
+        ).toString({ bounceable: false, urlSafe: true });
+
+        let decimals = 9;
+        let symbol = "JETTON";
+        let master = "";
+
+        if (isJettonV3(d)) {
+          master = Address.parse((d as JettonTransferDetailsV3).asset).toString(
+            {
+              bounceable: false,
+              urlSafe: true,
+            }
+          );
+          decimals = this.readDecimals((d as JettonTransferDetailsV3).asset);
+          symbol =
+            this.jettonMeta?.[(d as JettonTransferDetailsV3).asset]
+              ?.token_info?.[0]?.symbol ?? symbol;
+        } else if (isJettonV2(d)) {
+          const jet = (d as JettonTransferDetails).jetton ?? {};
+          decimals = jet.decimals ?? 9;
+          symbol = jet.symbol ?? symbol;
+          master = jet.master
+            ? Address.parse(jet.master).toString({
+                bounceable: false,
+                urlSafe: true,
+              })
+            : "";
         }
 
-        /* ----- jetton_transfer ------------------------ */
-        case "jetton_transfer": {
-          const d = action.details;
+        const amount = this.jetAmount(
+          isJettonV3(d) ? (d as JettonTransferDetailsV3).amount : d.value,
+          decimals
+        );
 
-          /* v3 */
-          if (isJettonV3(d) && d?.destination && d?.source) {
-            const dest = Address.parse(d?.destination || '').toString({ bounceable: false, urlSafe: true });
-            const src = Address.parse(d?.source || '').toString({ bounceable: false, urlSafe: true });
-            const meta = trace.metadata?.[d.asset]?.token_info;
-            const decimals = readDecimals(meta);
-            const symbol = meta?.[0]?.symbol ?? "JETTON";
-            const amount = Number(d.amount) / 10 ** decimals;
-            const master = Address.parse(d.asset).toString({ bounceable: false, urlSafe: true });
-
-            if (!purchaseDone && dest === this.contract && src === participant && amount > 0) {
-              buyAmount = amount;
-              buyCurrency = symbol;
-              buyMaster = master;
-              purchaseDone = true;
-            }
-            break;
-          }
-
-          /* v2 (старый JSON) */
-          if (isJettonV2(d)) {
-            const dest = d.destination
-              ? Address.parse(d.destination).toString({ bounceable: false, urlSafe: true })
-              : null;
-            const src = d.source
-              ? Address.parse(d.source).toString({ bounceable: false, urlSafe: true })
-              : null;
-            const jet = d.jetton ?? {};
-            const decimals = jet.decimals ?? 9;
-            const amount = (Number(d.value) || 0) / 10 ** decimals;
-            const symbol = jet.symbol ?? "JETTON";
-            const master = jet.master
-              ? Address.parse(jet.master).toString({ bounceable: false, urlSafe: true })
-              : null;
-
-            if (!purchaseDone && dest === this.contract && src === participant && amount > 0) {
-              buyAmount = amount;
-              buyCurrency = symbol;
-              buyMaster = master;
-              purchaseDone = true;
-            }
-          }
-          break;
+        if (
+          !purchaseRecorded &&
+          srcAddr === participant &&
+          dstAddr === this.contract
+        ) {
+          buyAmount = amount;
+          buyCurrency = symbol;
+          buyMasterAddress = master || null;
+          purchaseRecorded = true;
+          continue;
+        }
+        if (srcAddr === this.contract && dstAddr === participant) {
+          winAmount = amount;
+          winComment = `${amount} ${symbol}`;
+          continue;
+        }
+        if (srcAddr === this.contract && dstAddr !== participant) {
+          referralAmount = (referralAmount ?? 0) + amount;
+          referralAddress = dstAddr;
+          continue;
         }
       }
     }
 
-    /* ─── NFT-mint / prize only ──────────────────────── */
-    const mint = trace.actions.find(a => a.type === "nft_mint");
-
-    const base: Omit<LotteryTx, "nftAddress" | "collectionAddress" | "nftIndex"> = {
-      participant,
-      timestamp: trace.start_utime,
-      txHash,
-      lt: trace.start_lt,
-      isWin: winAmount > 0,
-      winComment,
-      winAmount,
-      winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-      referralAmount: referralNano ? nanoToTon(referralNano) : null,
-      referralAddress: referralAddr,
-      buyAmount,
-      buyCurrency,
-      buyMasterAddress: buyMaster,
-    };
-
+    const mint = trace.actions.find((a) => a.type === "nft_mint");
     if (
       mint &&
       mint.details.nft_item &&
       mint.details.nft_collection &&
       mint.details.nft_item_index
     ) {
-      /* ► полноценная покупка-минт */
+      const nftAddress = Address.parse(mint.details.nft_item).toString({
+        bounceable: false,
+        urlSafe: true,
+      });
+      const collectionAddress = Address.parse(
+        mint.details.nft_collection
+      ).toString({ bounceable: false, urlSafe: true });
+      const nftIndex = parseInt(mint.details.nft_item_index, 10);
+      if (isNaN(nftIndex)) return null;
       return {
-        ...base,
-        nftAddress: Address.parse(mint.details.nft_item).toString({
-          bounceable: false, urlSafe: true
-        }),
-        collectionAddress: Address.parse(mint.details.nft_collection).toString({
-          bounceable: false, urlSafe: true
-        }),
-        nftIndex: Number(mint.details.nft_item_index),
+        participant,
+        nftAddress,
+        collectionAddress,
+        nftIndex,
+        timestamp: trace.start_utime,
+        txHash,
+        lt: trace.start_lt,
+        isWin: winAmount > 0,
+        winComment,
+        winAmount,
+        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        referralAmount,
+        referralAddress,
+        buyAmount,
+        buyCurrency,
+        buyMasterAddress,
       };
     }
 
-    /* ► только приз / referral */
     if (winAmount > 0) {
-      return { ...base, nftAddress: null, collectionAddress: null, nftIndex: null };
+      return {
+        participant,
+        nftAddress: null,
+        collectionAddress: null,
+        nftIndex: null,
+        timestamp: trace.start_utime,
+        txHash,
+        lt: trace.start_lt,
+        isWin: true,
+        winComment,
+        winAmount,
+        winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
+        referralAmount,
+        referralAddress,
+        buyAmount,
+        buyCurrency,
+        buyMasterAddress,
+      };
     }
-
-    /* ► мусорная трасса */
     return null;
   }
 }
