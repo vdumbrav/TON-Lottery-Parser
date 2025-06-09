@@ -20,7 +20,6 @@ const PRIZE_MAP: Record<string, number> = {
   "jackpot winner": 10000,
 };
 
-const REFERRAL_PERCENT = 10;
 
 function isJettonDetails(
   details: TraceActionDetails
@@ -94,7 +93,6 @@ export class ApiServiceTon {
     let winTonNano = 0n;
     let referralNano = 0n;
     let referralAddress: string | null = null;
-    let referralPercent: number | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
     let buyMasterAddress: string | null = null;
@@ -201,10 +199,11 @@ export class ApiServiceTon {
         winJettonAmount: null,
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: buyAmount ?
-          Math.round((buyAmount * REFERRAL_PERCENT) * 1e6) / 1e6 :
-          (referralNano ? nanoToTon(referralNano) : null),
-        referralPercent: buyAmount ? REFERRAL_PERCENT : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent:
+          buyAmount && referralNano
+            ? Math.round((nanoToTon(referralNano) / buyAmount) * 10000) / 100
+            : null,
         referralAddress,
         buyAmount,
         buyCurrency,
@@ -227,10 +226,11 @@ export class ApiServiceTon {
         winJettonAmount: null,
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
-        referralAmount: buyAmount ?
-          Math.round((buyAmount * REFERRAL_PERCENT) * 1e6) / 1e6 :
-          (referralNano ? nanoToTon(referralNano) : null),
-        referralPercent: buyAmount ? REFERRAL_PERCENT : null,
+        referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent:
+          buyAmount && referralNano
+            ? Math.round((nanoToTon(referralNano) / buyAmount) * 10000) / 100
+            : null,
         referralAddress,
         buyAmount,
         buyCurrency,
