@@ -20,11 +20,11 @@
     "papaparse": "^5.5.3"
   },
   "devDependencies": {
+    "@types/node": "^22.15.30",
     "@types/papaparse": "^5.3.16",
-    "@types/node": "^22.15.20",
+    "rimraf": "^5.0.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "rimraf": "^5.0.10"
+    "typescript": "^5.8.3"
   },
   "keywords": [
     "ton",
