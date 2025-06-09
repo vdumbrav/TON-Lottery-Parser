@@ -30,7 +30,7 @@ function isJettonTransferV3(
   );
 }
 
-export class TonApiService {
+export class ApiServiceJetton {
   private readonly apiClient = axios.create({
     baseURL: CONFIG.apiEndpoint,
     timeout: 10000,
