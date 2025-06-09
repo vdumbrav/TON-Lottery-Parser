@@ -1,4 +1,4 @@
-export interface TraceActionDetails {
+export interface TraceActionDetailsBase {
   source?: string;
   destination?: string;
   value?: string;
@@ -16,11 +16,11 @@ export interface JettonInfo {
   master?: string;
 }
 
-export interface JettonTransferDetails extends TraceActionDetails {
+export interface JettonTransferDetails extends TraceActionDetailsBase {
   jetton?: JettonInfo;
 }
 
-export interface JettonTransferDetailsV3 extends TraceActionDetails {
+export interface JettonTransferDetailsV3 extends TraceActionDetailsBase {
   asset: string;
   sender: string;
   receiver: string;
@@ -46,7 +46,10 @@ export interface TraceAction {
     | "nft_mint"
     | "contract_deploy"
     | string;
-  details: TraceActionDetails | JettonTransferDetails | JettonTransferDetailsV3;
+  details:
+    | TraceActionDetailsBase
+    | JettonTransferDetails
+    | JettonTransferDetailsV3;
   trace_external_hash: string;
 }
 
@@ -87,10 +90,20 @@ export interface RawTrace {
   };
   is_incomplete: boolean;
   actions: TraceAction[];
-  trace: { tx_hash: string; in_msg_hash: string; children: any[] };
+  trace: {
+    tx_hash: string;
+    in_msg_hash: string;
+    children: any[];
+    in_msg?: { source?: string };
+  };
   transactions_order: string[];
   transactions: { [tx_hash: string]: Transaction };
 }
+
+export type TraceActionDetails =
+  | TraceActionDetailsBase
+  | JettonTransferDetails
+  | JettonTransferDetailsV3;
 
 export interface LotteryTx {
   participant: string;

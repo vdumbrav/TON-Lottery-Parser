@@ -18,7 +18,12 @@ function isJettonV2(d: TraceActionDetails): d is JettonTransferDetails {
 }
 
 function isJettonV3(d: TraceActionDetails): d is JettonTransferDetailsV3 {
-  return (d as any)?.asset !== undefined;
+  return (
+    typeof d === "object" &&
+    typeof (d as any).asset === "string" &&
+    typeof (d as any).sender === "string" &&
+    typeof (d as any).receiver === "string"
+  );
 }
 
 export class TonApiService {
@@ -46,12 +51,6 @@ export class TonApiService {
     return Math.round(num * 1e6) / 1e6;
   }
 
-  private readDecimals(asset: string): number {
-    const raw = this.jettonMeta?.[asset]?.token_info?.[0]?.extra?.decimals;
-    const decimals = Number(raw);
-    return Number.isFinite(decimals) ? decimals : 9;
-  }
-
   async fetchAllTraces(): Promise<RawTrace[]> {
     const all: RawTrace[] = [];
     let offset = 0;
@@ -76,28 +75,38 @@ export class TonApiService {
 
   private getJettonDetails(d: TraceActionDetails) {
     if (isJettonV3(d)) {
-      const decimals = this.readDecimals(d.asset);
-      const symbol =
-        this.jettonMeta?.[d.asset]?.token_info?.[0]?.symbol ?? "JETTON";
-      const master = this.normalizeAddress(d.asset);
+      const jetton = d as JettonTransferDetailsV3;
+      let symbol = "JETTON";
+      let decimals = 9;
+      const meta = this.jettonMeta?.[jetton.asset]?.token_info?.[0];
+
+      if (meta) {
+        symbol = typeof meta.symbol === "string" ? meta.symbol : symbol;
+        decimals = Number(meta.extra?.decimals ?? decimals);
+      }
+
+      const master = this.normalizeAddress(jetton.asset);
+
       return {
-        sender: this.normalizeAddress(d.sender),
-        receiver: this.normalizeAddress(d.receiver),
-        amount: this.jetAmount(d.amount, decimals),
+        sender: this.normalizeAddress(jetton.sender),
+        receiver: this.normalizeAddress(jetton.receiver),
+        amount: this.jetAmount(jetton.amount, decimals),
         symbol,
         master,
       };
     }
 
     if (isJettonV2(d)) {
-      const jet = d.jetton ?? {};
-      const decimals = Number(jet.decimals ?? 9);
-      const symbol = jet.symbol ?? "JETTON";
-      const master = jet.master ? this.normalizeAddress(jet.master) : null;
+      const jetton = d as JettonTransferDetails;
+      const info = jetton.jetton ?? {};
+      const decimals = Number(info.decimals ?? 9);
+      const symbol = typeof info.symbol === "string" ? info.symbol : "JETTON";
+      const master = info.master ? this.normalizeAddress(info.master) : null;
+
       return {
-        sender: this.normalizeAddress(d.source!),
-        receiver: this.normalizeAddress(d.destination!),
-        amount: this.jetAmount(d.value, decimals),
+        sender: this.normalizeAddress(jetton.source!),
+        receiver: this.normalizeAddress(jetton.destination!),
+        amount: this.jetAmount(jetton.value, decimals),
         symbol,
         master,
       };
@@ -114,10 +123,14 @@ export class TonApiService {
     const firstTx = trace.transactions_order?.[0];
     const rawSource = firstTx
       ? trace.transactions[firstTx]?.in_msg?.source ??
-        trace.transactions[firstTx]?.account
+        trace.transactions[firstTx]?.account ??
+        trace.trace?.in_msg?.source
       : null;
 
-    if (!rawSource) return null;
+    if (!rawSource) {
+      console.warn("Missing source address for trace:", trace.trace_id);
+      return null;
+    }
 
     let participant: string;
     try {
@@ -167,11 +180,12 @@ export class TonApiService {
                 action.details.destination
               );
             } catch (e) {
-              console.log("e", e);
+              console.log("Invalid referral address:", e);
             }
           }
           continue;
         }
+
         if (
           !purchaseRecorded &&
           destNorm === this.contract &&
@@ -215,7 +229,7 @@ export class TonApiService {
             continue;
           }
         } catch (e) {
-          console.log("e", e);
+          console.log("Failed to parse jetton_transfer:", e);
         }
       }
     }
@@ -236,8 +250,9 @@ export class TonApiService {
       finalReferralAmount = referralTonAmount;
       finalReferralAddress = referralTonAddress;
     } else {
-      finalReferralAmount = referralJettonAmount ?? referralTonAmount;
-      finalReferralAddress = referralJettonAddress ?? referralTonAddress;
+      finalReferralAmount = referralJettonAmount ?? referralTonAmount ?? 0;
+      finalReferralAddress =
+        referralJettonAddress ?? referralTonAddress ?? null;
     }
 
     referralAddress = finalReferralAddress;
@@ -254,7 +269,11 @@ export class TonApiService {
         mint.details.nft_collection
       );
       const nftIndex = parseInt(mint.details.nft_item_index, 10);
-      if (isNaN(nftIndex)) return null;
+      if (isNaN(nftIndex)) {
+        console.warn("Invalid NFT index:", mint.details.nft_item_index);
+        return null;
+      }
+
       return {
         participant,
         nftAddress,
