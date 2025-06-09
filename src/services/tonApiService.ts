@@ -81,13 +81,19 @@ export class TonApiService {
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
     if (!trace.actions || !trace.transactions_order) return null;
     const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
-    if (!rootB64) return null;
+    if (!rootB64) {
+      console.warn(`[API] ⚠ Missing root tx hash`);
+      return null;
+    }
     const txHash = this.b64ToHex(rootB64);
 
     let winComment: string | null = null;
     let winAmount = 0;
     let winTonNano = 0n;
-    let referralAmount: number | null = null;
+    let referralTonAmount: number | null = null;
+    let referralTonAddress: string | null = null;
+    let referralJettonAmount: number | null = null;
+    let referralJettonAddress: string | null = null;
     let referralAddress: string | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
@@ -98,7 +104,10 @@ export class TonApiService {
       ? trace.transactions[firstTx]?.in_msg?.source ??
         trace.transactions[firstTx]?.account
       : null;
-    if (!rawSource) return null;
+    if (!rawSource) {
+      console.warn(`[API] ⚠ Missing source address for tx ${txHash}`);
+      return null;
+    }
 
     let participant: string;
     try {
@@ -107,6 +116,9 @@ export class TonApiService {
         urlSafe: true,
       });
     } catch {
+      console.warn(
+        `[API] ⚠ Failed to parse source address: ${rawSource} in tx ${txHash}`
+      );
       return null;
     }
 
@@ -134,11 +146,18 @@ export class TonApiService {
             continue;
           }
           if (prizeKey === "referral") {
-            referralAmount = nanoToTon(value);
-            if (!referralAddress && action.details?.destination)
-              referralAddress = Address.parse(
-                action.details.destination
-              ).toString({ bounceable: false, urlSafe: true });
+            referralTonAmount = nanoToTon(value);
+            if (!referralTonAddress && action.details?.destination) {
+              try {
+                referralTonAddress = Address.parse(
+                  action.details.destination
+                ).toString({ bounceable: false, urlSafe: true });
+              } catch {
+                console.warn(
+                  `[API] ⚠ Invalid referral address: ${action.details.destination} in tx ${txHash}`
+                );
+              }
+            }
             continue;
           }
         }
@@ -213,12 +232,43 @@ export class TonApiService {
           continue;
         }
         if (srcAddr === this.contract && dstAddr !== participant) {
-          referralAmount = (referralAmount ?? 0) + amount;
-          referralAddress = dstAddr;
+          referralJettonAmount = (referralJettonAmount ?? 0) + amount;
+          referralJettonAddress = dstAddr;
           continue;
         }
       }
     }
+
+    let finalReferralAmount: number | null = null;
+    let finalReferralAddress: string | null = null;
+    const tonPositive = referralTonAmount !== null && referralTonAmount > 0;
+    const jettonPositive =
+      referralJettonAmount !== null && referralJettonAmount > 0;
+
+    if (tonPositive && jettonPositive) {
+      console.warn(
+        `[API] ⚠ Both TON (amount: ${referralTonAmount}) and jetton (amount: ${referralJettonAmount}) referrals detected in tx ${txHash}. Prioritizing jetton.`
+      );
+      finalReferralAmount = referralJettonAmount;
+      finalReferralAddress = referralJettonAddress;
+    } else if (jettonPositive) {
+      finalReferralAmount = referralJettonAmount;
+      finalReferralAddress = referralJettonAddress;
+    } else if (tonPositive) {
+      finalReferralAmount = referralTonAmount;
+      finalReferralAddress = referralTonAddress;
+    } else {
+      if (referralJettonAmount !== null) {
+        finalReferralAmount = referralJettonAmount;
+        finalReferralAddress = referralJettonAddress;
+      } else if (referralTonAmount !== null) {
+        finalReferralAmount = referralTonAmount;
+        finalReferralAddress = referralTonAddress;
+      }
+    }
+
+    const referralAmount = finalReferralAmount;
+    referralAddress = finalReferralAddress;
 
     const mint = trace.actions.find((a) => a.type === "nft_mint");
     if (
