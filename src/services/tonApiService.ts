@@ -1,5 +1,4 @@
 import axios from "axios";
-import { Buffer } from "buffer";
 import { CONFIG } from "../config/config.js";
 import {
   RawTrace,
@@ -42,10 +41,6 @@ export class TonApiService {
   });
   private jettonMeta: Record<string, any> = {};
 
-  private b64ToHex(b64: string): string {
-    return Buffer.from(b64, "base64").toString("hex");
-  }
-
   private jetAmount(raw: string | undefined, decimals: number): number {
     return raw ? Number(raw) / 10 ** decimals : 0;
   }
@@ -85,7 +80,7 @@ export class TonApiService {
       console.warn(`[API] ⚠ Missing root tx hash`);
       return null;
     }
-    const txHash = this.b64ToHex(rootB64);
+    const txHash = Buffer.from(rootB64, "base64").toString("hex");
 
     let winComment: string | null = null;
     let winAmount = 0;
