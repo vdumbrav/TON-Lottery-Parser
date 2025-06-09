@@ -2,13 +2,12 @@ export interface TraceActionDetails {
   source?: string;
   destination?: string;
   value?: string;
-  comment?: string | null; // Can be null
+  comment?: string | null;
   owner?: string;
   nft_item?: string;
   nft_collection?: string;
-  nft_item_index?: string; // API returns as string, needs conversion
+  nft_item_index?: string;
   opcode?: string;
-  // ... other possible fields
 }
 
 export interface JettonInfo {
@@ -19,6 +18,16 @@ export interface JettonInfo {
 
 export interface JettonTransferDetails extends TraceActionDetails {
   jetton?: JettonInfo;
+}
+
+export interface JettonTransferDetailsV3 extends TraceActionDetails {
+  asset: string;
+  sender: string;
+  receiver: string;
+  sender_jetton_wallet: string;
+  receiver_jetton_wallet: string;
+  amount: string;
+  forward_payload?: string | null;
 }
 
 export interface TraceAction {
@@ -37,29 +46,27 @@ export interface TraceAction {
     | "nft_mint"
     | "contract_deploy"
     | string;
-  details: TraceActionDetails | JettonTransferDetails;
+  details: TraceActionDetails | JettonTransferDetails | JettonTransferDetailsV3;
   trace_external_hash: string;
 }
 
 export interface InMsg {
   hash: string;
-  source: string | null; // Can be null for external messages
+  source: string | null;
   destination: string;
   message_content?: {
     hash: string;
     body: string;
     decoded: any | null;
   };
-  // ... other InMsg fields
 }
 
 export interface Transaction {
-  account: string; // The account address this transaction belongs to
+  account: string;
   hash: string;
   lt: string;
   now: number;
   in_msg: InMsg;
-  // ... other Transaction fields
 }
 
 export interface RawTrace {
@@ -80,15 +87,9 @@ export interface RawTrace {
   };
   is_incomplete: boolean;
   actions: TraceAction[];
-  trace: {
-    tx_hash: string;
-    in_msg_hash: string;
-    children: any[];
-  };
+  trace: { tx_hash: string; in_msg_hash: string; children: any[] };
   transactions_order: string[];
-  transactions: {
-    [tx_hash: string]: Transaction;
-  };
+  transactions: { [tx_hash: string]: Transaction };
 }
 
 export interface LotteryTx {
@@ -101,12 +102,13 @@ export interface LotteryTx {
   lt: string;
   isWin: boolean;
   winComment: string | null;
+  /** Prize amount in USDT equivalent */
   winAmount: number;
-  /** Actual TON amount transferred for the prize, if any (in TON) */
+  /** Actual TON amount transferred for the prize */
   winTonAmount: number | null;
-  /** Referral payout amount in TON if present */
+  /** Referral payout amount in TON or jetton */
   referralAmount: number | null;
-  /** Address that received the referral payout if present */
+  /** Address that received the referral payout */
   referralAddress: string | null;
   /** Amount the participant spent to buy the ticket */
   buyAmount: number | null;
