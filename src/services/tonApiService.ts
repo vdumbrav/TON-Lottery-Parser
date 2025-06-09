@@ -116,7 +116,9 @@ export class TonApiService {
         urlSafe: true,
       });
     } catch {
-      console.warn(`[API] ⚠ Failed to parse source address: ${rawSource} in tx ${txHash}`);
+      console.warn(
+        `[API] ⚠ Failed to parse source address: ${rawSource} in tx ${txHash}`
+      );
       return null;
     }
 
