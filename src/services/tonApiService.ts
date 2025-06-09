@@ -72,7 +72,9 @@ export class TonApiService {
     return Buffer.from(b64, "base64").toString("hex");
   }
 
-  private parseForwardPayload(b64?: string): { op: number; code?: number } | null {
+  private parseForwardPayload(
+    b64?: string
+  ): { op: number; code?: number } | null {
     if (!b64) return null;
     try {
       const cell = Cell.fromBase64(b64);
@@ -113,7 +115,7 @@ export class TonApiService {
     const firstTx = trace.transactions_order?.[0];
     const rawSource = firstTx
       ? trace.transactions[firstTx]?.in_msg?.source ??
-        trace.transactions[firstTx]?.account
+      trace.transactions[firstTx]?.account
       : null;
 
     if (!rawSource) {
@@ -203,8 +205,12 @@ export class TonApiService {
           const decimals = readDecimals(tokenMeta);
           const symbol = tokenMeta?.[0]?.symbol ?? "JETTON";
           const amount = Number(details.amount) / 10 ** decimals;
-          const fwd = this.parseForwardPayload(details.forward_payload || undefined);
-          const fwdAmt = details.forward_amount ? BigInt(details.forward_amount) : 0n;
+          const fwd = this.parseForwardPayload(
+            details.forward_payload || undefined
+          );
+          const fwdAmt = details.forward_amount
+            ? BigInt(details.forward_amount)
+            : 0n;
 
           if (
             !purchaseRecorded &&
@@ -246,9 +252,9 @@ export class TonApiService {
             buyCurrency = symbol;
             buyMasterAddress = master
               ? Address.parse(master).toString({
-                  bounceable: false,
-                  urlSafe: true,
-                })
+                bounceable: false,
+                urlSafe: true,
+              })
               : null;
             purchaseRecorded = true;
           }

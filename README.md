@@ -97,24 +97,25 @@ yarn start
 
 ## CSV Output
 
-| Column            | Description                                                 |
-| ----------------- | ----------------------------------------------------------- |
-| participant       | Wallet that minted the NFT or received the prize            |
-| nftAddress        | NFT item address (if present)                               |
-| collectionAddress | Collection contract address (if present)                    |
-| nftIndex          | NFT index within the collection (if present)                |
-| timestamp         | Unix timestamp of mint or prize payout                      |
-| txHash            | Root transaction hash (hex-encoded)                         |
-| lt                | Logical time of the trace                                   |
-| isWin             | Boolean — `true` if a prize was transferred                 |
-| winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner` |
-| winAmount         | Parsed prize value in USDT or equivalent                    |
-| winTonAmount      | Actual TON amount transferred for the prize |
-| referralAmount    | Referral payout amount in TON |
-| referralAddress   | Wallet that received the referral payout |
-| buyAmount         | Amount the participant paid for the ticket |
+| Column            | Description                                                         |
+| ----------------- | ------------------------------------------------------------------- |
+| participant       | Wallet that minted the NFT or received the prize                    |
+| nftAddress        | NFT item address (if present)                                       |
+| collectionAddress | Collection contract address (if present)                            |
+| nftIndex          | NFT index within the collection (if present)                        |
+| timestamp         | Unix timestamp of mint or prize payout                              |
+| txHash            | Root transaction hash (hex-encoded)                                 |
+| lt                | Logical time of the trace                                           |
+| isWin             | Boolean — `true` if a prize was transferred                         |
+| winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner`         |
+| winAmount         | Parsed prize value in USDT or equivalent                            |
+| winTonAmount      | Actual TON amount transferred for the prize                         |
+| referralAmount    | Referral payout amount in TON                                       |
+| referralAddress   | Wallet that received the referral payout                            |
+| buyAmount         | Amount the participant paid for the ticket                          |
 | buyCurrency       | Currency used for the ticket purchase (e.g. `TON` or jetton symbol) |
-| buyMasterAddress  | Jetton master address of the purchase currency |
+| buyMasterAddress  | Jetton master address of the purchase currency                      |
+
 ---
 
 ## Developer Notes

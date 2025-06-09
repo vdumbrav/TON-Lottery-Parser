@@ -1,6 +1,12 @@
-import { TraceActionDetails, JettonTransferDetailsV3, TokenInfo } from "../types/index.js";
+import {
+  TraceActionDetails,
+  JettonTransferDetailsV3,
+  TokenInfo,
+} from "../types/index.js";
 
-export function isJettonV3(d: TraceActionDetails): d is JettonTransferDetailsV3 {
+export function isJettonV3(
+  d: TraceActionDetails
+): d is JettonTransferDetailsV3 {
   return typeof (d as any).asset === "string";
 }
 

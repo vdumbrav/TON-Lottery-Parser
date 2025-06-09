@@ -1,4 +1,4 @@
-import { OP } from '../utils/analyzer.js';
+import { OP } from "../utils/analyzer.js";
 
 export interface PrizeMsg {
   op: typeof OP.SEND_PRIZE;
