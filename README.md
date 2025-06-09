@@ -1,6 +1,6 @@
 # TON Lottery Parser
 
-A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a TON smart-contract lottery on Testnet, parses them, and appends structured records into a CSV file for further analysis.
+A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a USDT-based TON smart-contract lottery on Testnet, parses them, and appends structured records into a CSV file for further analysis.
 
 ---
 
