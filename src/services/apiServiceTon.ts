@@ -92,6 +92,7 @@ export class ApiServiceTon {
     let winTonNano = 0n;
     let referralNano = 0n;
     let referralAddress: string | null = null;
+    let referralPercent: number | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
     let buyMasterAddress: string | null = null;
@@ -199,6 +200,7 @@ export class ApiServiceTon {
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent,
         referralAddress,
         buyAmount,
         buyCurrency,
@@ -222,6 +224,7 @@ export class ApiServiceTon {
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent,
         referralAddress,
         buyAmount,
         buyCurrency,

@@ -26,6 +26,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `winJettonSymbol` — Jetton symbol for prize (e.g. `USDT`)
   - `winTonAmount` — actual TON amount transferred for the prize
   - `referralAmount` — referral payout amount in TON or jetton (e.g. `USDT`) if present
+  - `referralPercent` — referral percentage specified in the jetton payload
   - `referralAddress` — wallet that received the referral payout
   - `buyAmount` — amount the participant paid for the ticket
   - `buyCurrency` — currency used for the ticket purchase (e.g. `TON` or jetton symbol)
@@ -121,6 +122,7 @@ yarn start
 | winJettonSymbol   | Symbol of the jetton prize (e.g. `USDT`)                            |
 | winTonAmount      | Actual TON amount transferred for the prize                         |
 | referralAmount    | Referral payout amount in TON or jetton (e.g. `USDT`)               |
+| referralPercent   | Referral percentage specified in the jetton payload |
 | referralAddress   | Wallet that received the referral payout                            |
 | buyAmount         | Amount the participant paid for the ticket                          |
 | buyCurrency       | Currency used for the ticket purchase (e.g. `TON` or jetton symbol) |

@@ -117,6 +117,7 @@ export interface LotteryTx {
   winJettonSymbol: string | null;
   winTonAmount: number | null;
   referralAmount: number | null;
+  referralPercent: number | null;
   referralAddress: string | null;
   buyAmount: number | null;
   buyCurrency: string | null;
