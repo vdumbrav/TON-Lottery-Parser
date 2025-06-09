@@ -144,7 +144,8 @@ yarn start
 - `winTonAmount` > 0 indicates the prize transfer was executed
 - `referralAmount` > 0 confirms the referral payout (TON or jetton)
 - For TON contracts, `referralPercent` is derived from the referral payout
-  relative to the ticket price
+  relative to the ticket price. For Jetton contracts, the percentage is read
+  directly from the referral payload.
 - `buyAmount` and `buyCurrency` capture the ticket purchase value
 - `buyMasterAddress` contains the jetton master address used for the purchase
 - Utility helpers in `src/core/utils.ts` provide a single

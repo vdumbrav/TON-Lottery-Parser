@@ -47,16 +47,8 @@ export class ApiServiceJetton {
     return Math.round(amount * 1e6) / 1e6;
   }
 
-  private isReferral(details: any): boolean {
-    const payloadCandidate: unknown = details?.forward_payload;
-    return (
-      typeof payloadCandidate === "string" &&
-      payloadCandidate.includes("ClJFRkY")
-    );
-  }
-
-  private extractReferralPercent(details: any): number | null {
-    const payloadCandidate: unknown = details?.forward_payload;
+  private extractReferralPercent(details: TraceActionDetails): number | null {
+    const payloadCandidate = (details as JettonTransferDetailsV3)?.forward_payload;
     if (typeof payloadCandidate !== "string") return null;
     try {
       const cell = Cell.fromBase64(payloadCandidate);
@@ -227,13 +219,13 @@ export class ApiServiceJetton {
         }
 
         if (transfer.sender === this.contractAddress) {
-          const referralDetected = this.isReferral(action.details as any);
-          if (referralDetected) {
+          const percent = this.extractReferralPercent(action.details);
+          if (percent !== null) {
             referralJettonAmount =
               (referralJettonAmount ?? 0) + transfer.amount;
             referralJettonReceiver = transfer.receiver;
             if (referralJettonPercent === null) {
-              referralJettonPercent = this.extractReferralPercent(action.details);
+              referralJettonPercent = percent;
             }
           } else {
             wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
