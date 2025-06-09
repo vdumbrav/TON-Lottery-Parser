@@ -143,6 +143,7 @@ yarn start
 - NFT-related fields will be `null` in prize-only traces
 - `winTonAmount` > 0 indicates the prize transfer was executed
 - `referralAmount` > 0 confirms the referral payout (TON or jetton)
+- For TON contracts, `referralAmount` is computed as `buyAmount` × 10%
 - `buyAmount` and `buyCurrency` capture the ticket purchase value
 - `buyMasterAddress` contains the jetton master address used for the purchase
 - Utility helpers in `src/core/utils.ts` provide a single
