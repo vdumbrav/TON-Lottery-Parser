@@ -20,6 +20,8 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `txHash` — hex-encoded root transaction hash
   - `lt` — logical time of the trace
   - `isWin` — `true` if the trace includes a prize transfer
+  - `isLoss` — `true` for losing tickets (prize code 7)
+  - `prizeCode` — 8‑bit code extracted from the `PRIZ` payload
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
   - `winAmount` — prize in USDT equivalent (e.g. `700`)
   - `winTonAmount` — actual TON amount transferred for the prize
@@ -107,6 +109,8 @@ yarn start
 | txHash            | Root transaction hash (hex-encoded)                                 |
 | lt                | Logical time of the trace                                           |
 | isWin             | Boolean — `true` if a prize was transferred                         |
+| isLoss            | `true` when prize code equals 7 |
+| prizeCode         | 8‑bit code read from the `PRIZ` payload |
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner`         |
 | winAmount         | Parsed prize value in USDT or equivalent                            |
 | winTonAmount      | Actual TON amount transferred for the prize                         |
@@ -121,11 +125,8 @@ yarn start
 ## Developer Notes
 
 - `txHash` is extracted from the root trace, not from external hash
-- Prize detection logic uses:
-
-  ```ts
-  if (action.type === "ton_transfer" && action.details?.comment)
-  ```
+- Prize detection logic checks simple comments on `ton_transfer` and also
+  decodes forward payloads (`PRIZ`/`REFF`) for jetton transfers.
 
 - Traces with a valid prize but no `nft_mint` (e.g. manual jackpot) are included
 - NFT-related fields will be `null` in prize-only traces

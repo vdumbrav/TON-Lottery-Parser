@@ -101,6 +101,10 @@ export interface LotteryTx {
   txHash: string;
   lt: string;
   isWin: boolean;
+  /** true when prizeCode === 7 (loss card) */
+  isLoss: boolean;
+  /** 8‑bit code that comes after PRIZ opcode inside the payload */
+  prizeCode: number | null;
   winComment: string | null;
   /** Prize amount in USDT equivalent */
   winAmount: number;
