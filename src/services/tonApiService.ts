@@ -9,9 +9,10 @@ import {
   JettonTransferDetailsV3,
   TraceMetadata,
 } from "../types/index.js";
-import { Address } from "@ton/core";
+import { Address, Cell, Slice } from "@ton/core";
 import { nanoToTon, delay } from "../core/utils.js";
 import { isJettonV3, readDecimals } from "../utils/checks.js";
+import { OP } from "../utils/analyzer.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
@@ -69,6 +70,22 @@ export class TonApiService {
 
   private b64ToHex(b64: string): string {
     return Buffer.from(b64, "base64").toString("hex");
+  }
+
+  private parseForwardPayload(b64?: string): { op: number; code?: number } | null {
+    if (!b64) return null;
+    try {
+      const cell = Cell.fromBase64(b64);
+      const slice = cell.beginParse();
+      const op = slice.loadUint(32);
+      if (op === OP.SEND_PRIZE) {
+        const code = slice.loadUint(8);
+        return { op, code };
+      }
+      return { op };
+    } catch {
+      return null;
+    }
   }
 
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
@@ -189,6 +206,10 @@ export class TonApiService {
           const decimals = readDecimals(tokenMeta);
           const symbol = tokenMeta?.[0]?.symbol ?? "JETTON";
           const amount = Number(details.amount) / 10 ** decimals;
+          const fwd = this.parseForwardPayload(details.forward_payload);
+          const fwdAmt = details.forward_amount
+            ? BigInt(details.forward_amount)
+            : 0n;
 
           if (
             !purchaseRecorded &&
@@ -200,6 +221,19 @@ export class TonApiService {
             buyCurrency = symbol;
             buyMasterAddress = master;
             purchaseRecorded = true;
+          }
+
+          if (srcNorm === this.contract && destNorm === participant && fwd) {
+            if (fwd.op === OP.SEND_PRIZE) {
+              winAmount += amount;
+              winTonNano += fwdAmt;
+              if (fwd.code !== undefined) {
+                winComment = `code${fwd.code}`;
+              }
+            } else if (fwd.op === OP.SEND_REFF) {
+              referralNano += fwdAmt;
+              referralAddress = destNorm;
+            }
           }
         } else if (isJettonDetails(details)) {
           const jetton = details.jetton;
