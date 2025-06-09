@@ -143,3 +143,5 @@ export interface LotteryTx {
   /** Jetton master address if the ticket was bought with a jetton */
   buyMasterAddress: string | null;
 }
+
+export * from "./lottery.js";
