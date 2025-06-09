@@ -1,26 +1,53 @@
+/* ---------- ОБЩИЕ ТИПЫ ---------- */
 export interface TraceActionDetails {
+  // общие поля
   source?: string;
   destination?: string;
-  value?: string;
-  comment?: string | null; // Can be null
+  value?: string;            // ► старый формат
+  comment?: string | null;
   owner?: string;
+
+  /* NFT-mint */
   nft_item?: string;
   nft_collection?: string;
-  nft_item_index?: string; // API returns as string, needs conversion
+  nft_item_index?: string;
   opcode?: string;
-  // ... other possible fields
 }
 
+/* ---------- Jetton (v2) ---------- */
 export interface JettonInfo {
   decimals?: number;
   symbol?: string;
   master?: string;
 }
-
 export interface JettonTransferDetails extends TraceActionDetails {
-  jetton?: JettonInfo;
+  jetton?: JettonInfo;       // ► было в v2
 }
 
+/* ---------- Jetton (v3) ---------- */
+export interface JettonTransferDetailsV3 extends TraceActionDetails {
+  asset: string;             // мастер-адрес jetton
+  amount: string;            // целое в “nano” без точки
+  sender_jetton_wallet: string;
+  receiver_jetton_wallet: string;
+}
+
+/* ---------- Метаданные трассы (v3) ---------- */
+export interface TokenInfo {
+  type: "jetton_masters" | string;
+  name?: string;
+  symbol?: string;
+  description?: string;
+  extra?: { decimals?: string;[k: string]: unknown };
+}
+export interface TraceMetadata {
+  [master: string]: {
+    is_indexed: boolean;
+    token_info: TokenInfo[];
+  };
+}
+
+/* ---------- Action ---------- */
 export interface TraceAction {
   trace_id: string;
   action_id: string;
@@ -31,35 +58,33 @@ export interface TraceAction {
   transactions: string[];
   success: boolean;
   type:
-    | "ton_transfer"
-    | "call_contract"
-    | "jetton_transfer"
-    | "nft_mint"
-    | "contract_deploy"
-    | string;
-  details: TraceActionDetails | JettonTransferDetails;
+  | "ton_transfer"
+  | "call_contract"
+  | "jetton_transfer"
+  | "nft_mint"
+  | "contract_deploy"
+  | string;
+  // теперь одно из трёх
+  details:
+  | TraceActionDetails
+  | JettonTransferDetails
+  | JettonTransferDetailsV3;
   trace_external_hash: string;
 }
 
+/* ---------- Транзакции / трассы ---------- */
 export interface InMsg {
   hash: string;
-  source: string | null; // Can be null for external messages
+  source: string | null;
   destination: string;
-  message_content?: {
-    hash: string;
-    body: string;
-    decoded: any | null;
-  };
-  // ... other InMsg fields
+  message_content?: { hash: string; body: string; decoded: any | null };
 }
-
 export interface Transaction {
-  account: string; // The account address this transaction belongs to
+  account: string;
   hash: string;
   lt: string;
   now: number;
   in_msg: InMsg;
-  // ... other Transaction fields
 }
 
 export interface RawTrace {
@@ -80,17 +105,14 @@ export interface RawTrace {
   };
   is_incomplete: boolean;
   actions: TraceAction[];
-  trace: {
-    tx_hash: string;
-    in_msg_hash: string;
-    children: any[];
-  };
+  trace: { tx_hash: string; in_msg_hash: string; children: any[] };
   transactions_order: string[];
-  transactions: {
-    [tx_hash: string]: Transaction;
-  };
+  transactions: { [tx_hash: string]: Transaction };
+  /*  v3 ►*/
+  metadata?: TraceMetadata;
 }
 
+/* ---------- Результат для БД ---------- */
 export interface LotteryTx {
   participant: string;
   nftAddress?: string | null;
@@ -102,16 +124,10 @@ export interface LotteryTx {
   isWin: boolean;
   winComment: string | null;
   winAmount: number;
-  /** Actual TON amount transferred for the prize, if any (in TON) */
   winTonAmount: number | null;
-  /** Referral payout amount in TON if present */
   referralAmount: number | null;
-  /** Address that received the referral payout if present */
   referralAddress: string | null;
-  /** Amount the participant spent to buy the ticket */
   buyAmount: number | null;
-  /** Currency used for the purchase (e.g. `TON` or jetton symbol) */
   buyCurrency: string | null;
-  /** Jetton master address if the ticket was bought with a jetton */
   buyMasterAddress: string | null;
 }
