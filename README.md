@@ -80,6 +80,12 @@ TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
 PAGE_LIMIT=50
 ```
 
+### Type checking
+
+First install the dev dependencies with `npm install`.
+Run `npm run build` to compile the TypeScript sources and ensure all
+types are correct. The command emits the compiled files into `dist/`.
+
 ---
 
 ## Usage
@@ -137,6 +143,10 @@ yarn start
 - `referralAmount` > 0 confirms the referral payout (TON or jetton)
 - `buyAmount` and `buyCurrency` capture the ticket purchase value
 - `buyMasterAddress` contains the jetton master address used for the purchase
+- Utility helpers in `src/core/utils.ts` provide a single
+  `normalizeAddress()` function for converting raw wallet addresses
+  to the canonical bounceable-`false`, URL-safe format used throughout
+  the services.
 
 ---
 

@@ -7,8 +7,7 @@ import {
   TraceActionDetails,
   JettonTransferDetailsV3,
 } from "../types/index.js";
-import { Address } from "@ton/core";
-import { nanoToTon, delay } from "../core/utils.js";
+import { nanoToTon, delay, normalizeAddress } from "../core/utils.js";
 
 const OP_PRIZ = 0x5052495a;
 const OP_REFF = 0x52454646;
@@ -37,21 +36,9 @@ export class ApiServiceJetton {
     params: { api_key: CONFIG.apiKey },
   });
 
-  private readonly contractAddress = Address.parse(
-    CONFIG.contractAddress
-  ).toString({
-    bounceable: false,
-    urlSafe: true,
-  });
+  private readonly contractAddress = normalizeAddress(CONFIG.contractAddress);
 
   private jettonMetadata: Record<string, any> = {};
-
-  private normalizeAddress(rawAddress: string): string {
-    return Address.parse(rawAddress).toString({
-      bounceable: false,
-      urlSafe: true,
-    });
-  }
 
   private convertJettonAmount(rawAmount?: string, decimals = 9): number {
     if (!rawAmount) return 0;
@@ -100,11 +87,11 @@ export class ApiServiceJetton {
         decimals = Number(metadata.extra?.decimals ?? decimals);
       }
       return {
-        sender: this.normalizeAddress(transfer.sender),
-        receiver: this.normalizeAddress(transfer.receiver),
+        sender: normalizeAddress(transfer.sender),
+        receiver: normalizeAddress(transfer.receiver),
         amount: this.convertJettonAmount(transfer.amount, decimals),
         symbol,
-        master: this.normalizeAddress(transfer.asset),
+        master: normalizeAddress(transfer.asset),
       };
     }
     if (isJettonTransferV2(details)) {
@@ -113,11 +100,11 @@ export class ApiServiceJetton {
       const decimals = Number(info.decimals ?? 9);
       const symbol = typeof info.symbol === "string" ? info.symbol : "JETTON";
       const masterAddress = info.master
-        ? this.normalizeAddress(info.master)
+        ? normalizeAddress(info.master)
         : null;
       return {
-        sender: this.normalizeAddress(transfer.source!),
-        receiver: this.normalizeAddress(transfer.destination!),
+        sender: normalizeAddress(transfer.source!),
+        receiver: normalizeAddress(transfer.destination!),
         amount: this.convertJettonAmount(transfer.value, decimals),
         symbol,
         master: masterAddress,
@@ -143,7 +130,7 @@ export class ApiServiceJetton {
 
     let participantAddress: string;
     try {
-      participantAddress = this.normalizeAddress(initialSource);
+      participantAddress = normalizeAddress(initialSource);
     } catch {
       return null;
     }
@@ -172,10 +159,10 @@ export class ApiServiceJetton {
             ? BigInt(action.details.value)
             : 0n;
         const destination = action.details?.destination
-          ? this.normalizeAddress(action.details.destination)
+          ? normalizeAddress(action.details.destination)
           : null;
         const source = action.details?.source
-          ? this.normalizeAddress(action.details.source)
+          ? normalizeAddress(action.details.source)
           : null;
 
         if (
@@ -259,14 +246,21 @@ export class ApiServiceJetton {
       lt: trace.start_lt,
     };
 
-    if (mintAction) {
-      const nftAddress = this.normalizeAddress(
-        (mintAction as any).details.nft_item
+    if (
+      mintAction &&
+      mintAction.details &&
+      typeof mintAction.details.nft_item === "string" &&
+      typeof mintAction.details.nft_collection === "string" &&
+      typeof mintAction.details.nft_item_index === "string"
+    ) {
+      const nftIndex = Number(mintAction.details.nft_item_index);
+      if (Number.isNaN(nftIndex)) return null;
+
+      const nftAddress = normalizeAddress(mintAction.details.nft_item);
+      const collectionAddress = normalizeAddress(
+        mintAction.details.nft_collection
       );
-      const collectionAddress = this.normalizeAddress(
-        (mintAction as any).details.nft_collection
-      );
-      const nftIndex = Number((mintAction as any).details.nft_item_index);
+
       return {
         ...baseTransaction,
         nftAddress,

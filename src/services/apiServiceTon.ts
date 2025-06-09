@@ -7,8 +7,7 @@ import {
   JettonTransferDetails,
   TraceActionDetails,
 } from "../types/index.js";
-import { Address } from "@ton/core";
-import { nanoToTon, delay } from "../core/utils.js";
+import { nanoToTon, delay, normalizeAddress } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
@@ -34,10 +33,7 @@ export class ApiServiceTon {
     params: { api_key: CONFIG.apiKey },
   });
 
-  private contract = Address.parse(CONFIG.contractAddress).toString({
-    bounceable: false,
-    urlSafe: true,
-  });
+  private contract = normalizeAddress(CONFIG.contractAddress);
 
   async fetchAllTraces(): Promise<RawTrace[]> {
     console.log("[API-TON] start fetching traces");
@@ -85,10 +81,7 @@ export class ApiServiceTon {
 
     let participant: string;
     try {
-      participant = Address.parse(rawSource).toString({
-        bounceable: false,
-        urlSafe: true,
-      });
+      participant = normalizeAddress(rawSource);
     } catch {
       console.warn(`[API-TON] ⚠ Invalid address: ${rawSource}`);
       return null;
@@ -110,10 +103,10 @@ export class ApiServiceTon {
       const src = details?.source;
 
       const destNorm = dest
-        ? Address.parse(dest).toString({ bounceable: false, urlSafe: true })
+        ? normalizeAddress(dest)
         : null;
       const srcNorm = src
-        ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
+        ? normalizeAddress(src)
         : null;
 
       const value = details?.value ? BigInt(details.value) : 0n;
@@ -133,10 +126,7 @@ export class ApiServiceTon {
           referralNano += value;
           if (!referralAddress && dest) {
             try {
-              referralAddress = Address.parse(dest).toString({
-                bounceable: false,
-                urlSafe: true,
-              });
+              referralAddress = normalizeAddress(dest);
             } catch {
               console.warn(`[API-TON] invalid referral address: ${dest}`);
             }
@@ -173,12 +163,7 @@ export class ApiServiceTon {
         ) {
           buyAmount = amount;
           buyCurrency = symbol;
-          buyMasterAddress = master
-            ? Address.parse(master).toString({
-                bounceable: false,
-                urlSafe: true,
-              })
-            : null;
+          buyMasterAddress = master ? normalizeAddress(master) : null;
           purchaseRecorded = true;
         }
       }
@@ -192,16 +177,10 @@ export class ApiServiceTon {
       mint.details.nft_collection &&
       mint.details.nft_item_index
     ) {
-      const nftAddress = Address.parse(mint.details.nft_item).toString({
-        bounceable: false,
-        urlSafe: true,
-      });
-      const collectionAddress = Address.parse(
+      const nftAddress = normalizeAddress(mint.details.nft_item);
+      const collectionAddress = normalizeAddress(
         mint.details.nft_collection
-      ).toString({
-        bounceable: false,
-        urlSafe: true,
-      });
+      );
       const nftIndex = parseInt(mint.details.nft_item_index, 10);
       if (isNaN(nftIndex)) return null;
 
