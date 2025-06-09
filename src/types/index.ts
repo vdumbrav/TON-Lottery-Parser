@@ -102,11 +102,18 @@ export interface LotteryTx {
   lt: string;
   isWin: boolean;
   winComment: string | null;
+  /** Prize amount in USDT equivalent */
   winAmount: number;
+  /** Actual TON amount transferred for the prize */
   winTonAmount: number | null;
+  /** Referral payout amount in TON or jetton */
   referralAmount: number | null;
+  /** Address that received the referral payout */
   referralAddress: string | null;
+  /** Amount the participant spent to buy the ticket */
   buyAmount: number | null;
+  /** Currency used for the purchase (e.g. `TON` or jetton symbol) */
   buyCurrency: string | null;
+  /** Jetton master address if the ticket was bought with a jetton */
   buyMasterAddress: string | null;
 }

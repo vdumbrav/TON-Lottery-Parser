@@ -23,7 +23,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `winComment` — TON transfer comment (e.g. `x3`, `Jackpot winner`)
   - `winAmount` — prize in USDT equivalent (e.g. `700`)
   - `winTonAmount` — actual TON amount transferred for the prize
-  - `referralAmount` — referral payout in TON if present
+  - `referralAmount` — referral payout amount in TON or jetton (e.g. `USDT`) if present
   - `referralAddress` — wallet that received the referral payout
   - `buyAmount` — amount the participant paid for the ticket
   - `buyCurrency` — currency used for the ticket purchase (e.g. `TON` or jetton symbol)
@@ -110,7 +110,7 @@ yarn start
 | winComment        | Comment tag on `ton_transfer`, e.g. `x77`, `Jackpot winner` |
 | winAmount         | Parsed prize value in USDT or equivalent                    |
 | winTonAmount      | Actual TON amount transferred for the prize |
-| referralAmount    | Referral payout amount in TON |
+| referralAmount    | Referral payout amount in TON or jetton (e.g. `USDT`) |
 | referralAddress   | Wallet that received the referral payout |
 | buyAmount         | Amount the participant paid for the ticket |
 | buyCurrency       | Currency used for the ticket purchase (e.g. `TON` or jetton symbol) |
@@ -129,7 +129,7 @@ yarn start
 - Traces with a valid prize but no `nft_mint` (e.g. manual jackpot) are included
 - NFT-related fields will be `null` in prize-only traces
 - `winTonAmount` > 0 indicates the prize transfer was executed
-- `referralAmount` > 0 confirms the referral payout
+- `referralAmount` > 0 confirms the referral payout (TON or jetton)
 - `buyAmount` and `buyCurrency` capture the ticket purchase value
 - `buyMasterAddress` contains the jetton master address used for the purchase
 
