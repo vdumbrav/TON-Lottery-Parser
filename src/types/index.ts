@@ -11,6 +11,24 @@ export interface TraceActionDetails {
   // ... other possible fields
 }
 
+export interface TokenInfo {
+  type: "jetton_masters" | string;
+  name: string;
+  symbol: string;
+  extra: {
+    decimals?: string;
+    address?: string;
+    [k: string]: unknown;
+  };
+}
+
+export interface TraceMetadata {
+  [addr: string]: {
+    is_indexed: boolean;
+    token_info: TokenInfo[];
+  };
+}
+
 export interface JettonInfo {
   decimals?: number;
   symbol?: string;
@@ -20,6 +38,15 @@ export interface JettonInfo {
 export interface JettonTransferDetails extends TraceActionDetails {
   jetton?: JettonInfo;
 }
+
+export interface JettonTransferDetailsV3 extends TraceActionDetails {
+  asset: string;
+  amount: string;
+  sender_jetton_wallet: string;
+  receiver_jetton_wallet: string;
+}
+
+export type AnyJettonDetails = JettonTransferDetails | JettonTransferDetailsV3;
 
 export interface TraceAction {
   trace_id: string;
@@ -89,6 +116,7 @@ export interface RawTrace {
   transactions: {
     [tx_hash: string]: Transaction;
   };
+  metadata?: TraceMetadata;
 }
 
 export interface LotteryTx {

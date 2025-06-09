@@ -6,9 +6,12 @@ import {
   LotteryTx,
   JettonTransferDetails,
   TraceActionDetails,
+  JettonTransferDetailsV3,
+  TraceMetadata,
 } from "../types/index.js";
 import { Address } from "@ton/core";
 import { nanoToTon, delay } from "../core/utils.js";
+import { isJettonV3, readDecimals } from "../utils/checks.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 10,
@@ -69,7 +72,7 @@ export class TonApiService {
   }
 
   mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
-    if (!trace.actions || !trace.transactions_order) {
+    if (!trace.actions?.length || !trace.transactions_order) {
       return null;
     }
 
@@ -176,27 +179,50 @@ export class TonApiService {
           ? Address.parse(src).toString({ bounceable: false, urlSafe: true })
           : null;
         const details = action.details as TraceActionDetails;
-        const jetton = isJettonDetails(details) ? details.jetton : undefined;
-        const decimals = jetton?.decimals ?? 9;
-        const amount = (Number(action.details?.value) || 0) / 10 ** decimals;
-        const symbol = jetton?.symbol ?? "JETTON";
-        const master = jetton?.master ?? null;
-        if (
-          !purchaseRecorded &&
-          destNorm === this.contract &&
-          srcNorm === participant &&
-          amount > 0
-        ) {
-          buyAmount = amount;
-          buyCurrency = symbol;
-          buyMasterAddress = master
-            ? Address.parse(master).toString({
-                bounceable: false,
-                urlSafe: true,
-              })
-            : null;
-          console.warn(`[API] invalid nft_index in tx ${txHash}`);
-          purchaseRecorded = true;
+
+        if (isJettonV3(details)) {
+          const master = Address.parse(details.asset).toString({
+            bounceable: false,
+            urlSafe: true,
+          });
+          const tokenMeta = trace.metadata?.[details.asset]?.token_info;
+          const decimals = readDecimals(tokenMeta);
+          const symbol = tokenMeta?.[0]?.symbol ?? "JETTON";
+          const amount = Number(details.amount) / 10 ** decimals;
+
+          if (
+            !purchaseRecorded &&
+            destNorm === this.contract &&
+            srcNorm === participant &&
+            amount > 0
+          ) {
+            buyAmount = amount;
+            buyCurrency = symbol;
+            buyMasterAddress = master;
+            purchaseRecorded = true;
+          }
+        } else if (isJettonDetails(details)) {
+          const jetton = details.jetton;
+          const decimals = jetton?.decimals ?? 9;
+          const amount = (Number(details.value) || 0) / 10 ** decimals;
+          const symbol = jetton?.symbol ?? "JETTON";
+          const master = jetton?.master ?? null;
+          if (
+            !purchaseRecorded &&
+            destNorm === this.contract &&
+            srcNorm === participant &&
+            amount > 0
+          ) {
+            buyAmount = amount;
+            buyCurrency = symbol;
+            buyMasterAddress = master
+              ? Address.parse(master).toString({
+                  bounceable: false,
+                  urlSafe: true,
+                })
+              : null;
+            purchaseRecorded = true;
+          }
         }
       }
     }
