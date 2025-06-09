@@ -20,6 +20,7 @@ const PRIZE_MAP: Record<string, number> = {
   "jackpot winner": 10000,
 };
 
+
 function isJettonDetails(
   details: TraceActionDetails
 ): details is JettonTransferDetails {
@@ -199,6 +200,10 @@ export class ApiServiceTon {
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent:
+          buyAmount && referralNano
+            ? Math.round((nanoToTon(referralNano) / buyAmount) * 10000) / 100
+            : null,
         referralAddress,
         buyAmount,
         buyCurrency,
@@ -222,6 +227,10 @@ export class ApiServiceTon {
         winJettonSymbol: null,
         winTonAmount: winTonNano ? nanoToTon(winTonNano) : null,
         referralAmount: referralNano ? nanoToTon(referralNano) : null,
+        referralPercent:
+          buyAmount && referralNano
+            ? Math.round((nanoToTon(referralNano) / buyAmount) * 10000) / 100
+            : null,
         referralAddress,
         buyAmount,
         buyCurrency,

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Cell } from "@ton/core";
 import { CONFIG } from "../config/config.js";
 import {
   RawTrace,
@@ -46,12 +47,19 @@ export class ApiServiceJetton {
     return Math.round(amount * 1e6) / 1e6;
   }
 
-  private isReferral(details: any): boolean {
-    const payloadCandidate: unknown = details?.forward_payload;
-    return (
-      typeof payloadCandidate === "string" &&
-      payloadCandidate.includes("ClJFRkY")
-    );
+  private extractReferralPercent(details: TraceActionDetails): number | null {
+    const payloadCandidate = (details as JettonTransferDetailsV3)?.forward_payload;
+    if (typeof payloadCandidate !== "string") return null;
+    try {
+      const cell = Cell.fromBase64(payloadCandidate);
+      const slice = cell.beginParse();
+      const opcode = slice.loadUint(32);
+      if (opcode !== OP_REFF) return null;
+      const percent = slice.loadUint(8);
+      return percent;
+    } catch {
+      return null;
+    }
   }
 
   async fetchAllTraces(): Promise<RawTrace[]> {
@@ -143,6 +151,7 @@ export class ApiServiceJetton {
     let referralTonReceiver: string | null = null;
     let referralJettonAmount: number | null = null;
     let referralJettonReceiver: string | null = null;
+    let referralJettonPercent: number | null = null;
     let purchaseAmount: number | null = null;
     let purchaseCurrency: string | null = null;
     let purchaseJettonMaster: string | null = null;
@@ -210,11 +219,14 @@ export class ApiServiceJetton {
         }
 
         if (transfer.sender === this.contractAddress) {
-          const referralDetected = this.isReferral(action.details as any);
-          if (referralDetected) {
+          const percent = this.extractReferralPercent(action.details);
+          if (percent !== null) {
             referralJettonAmount =
               (referralJettonAmount ?? 0) + transfer.amount;
             referralJettonReceiver = transfer.receiver;
+            if (referralJettonPercent === null) {
+              referralJettonPercent = percent;
+            }
           } else {
             wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
             wonJettonSymbol = transfer.symbol;
@@ -227,9 +239,11 @@ export class ApiServiceJetton {
 
     let finalReferralAmount: number | null = null;
     let finalReferralReceiver: string | null = null;
+    let finalReferralPercent: number | null = null;
     if (referralJettonAmount && referralJettonAmount > 0) {
       finalReferralAmount = referralJettonAmount;
       finalReferralReceiver = referralJettonReceiver;
+      finalReferralPercent = referralJettonPercent;
     } else if (referralTonAmount && referralTonAmount > 0) {
       finalReferralAmount = referralTonAmount;
       finalReferralReceiver = referralTonReceiver;
@@ -273,6 +287,7 @@ export class ApiServiceJetton {
         winJettonSymbol: wonJettonSymbol ?? null,
         winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
         referralAmount: finalReferralAmount,
+        referralPercent: finalReferralPercent,
         referralAddress: finalReferralReceiver,
         buyAmount: purchaseAmount,
         buyCurrency: purchaseCurrency,
@@ -293,6 +308,7 @@ export class ApiServiceJetton {
         winJettonSymbol: wonJettonSymbol ?? null,
         winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
         referralAmount: finalReferralAmount,
+        referralPercent: finalReferralPercent,
         referralAddress: finalReferralReceiver,
         buyAmount: purchaseAmount,
         buyCurrency: purchaseCurrency,
