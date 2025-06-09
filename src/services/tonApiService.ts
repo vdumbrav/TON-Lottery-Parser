@@ -91,7 +91,9 @@ export class TonApiService {
     let winAmount = 0;
     let winTonNano = 0n;
     let referralTonAmount: number | null = null;
+    let referralTonAddress: string | null = null;
     let referralJettonAmount: number | null = null;
+    let referralJettonAddress: string | null = null;
     let referralAddress: string | null = null;
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
@@ -143,9 +145,9 @@ export class TonApiService {
           }
           if (prizeKey === "referral") {
             referralTonAmount = nanoToTon(value);
-            if (!referralAddress && action.details?.destination) {
+            if (!referralTonAddress && action.details?.destination) {
               try {
-                referralAddress = Address.parse(
+                referralTonAddress = Address.parse(
                   action.details.destination
                 ).toString({ bounceable: false, urlSafe: true });
               } catch {
@@ -229,19 +231,42 @@ export class TonApiService {
         }
         if (srcAddr === this.contract && dstAddr !== participant) {
           referralJettonAmount = (referralJettonAmount ?? 0) + amount;
-          referralAddress = dstAddr;
+          referralJettonAddress = dstAddr;
           continue;
         }
       }
     }
 
-    if (referralJettonAmount !== null && referralTonAmount !== null) {
+    let finalReferralAmount: number | null = null;
+    let finalReferralAddress: string | null = null;
+    const tonPositive = referralTonAmount !== null && referralTonAmount > 0;
+    const jettonPositive =
+      referralJettonAmount !== null && referralJettonAmount > 0;
+
+    if (tonPositive && jettonPositive) {
       console.warn(
-        `[API] ⚠ Both TON and jetton referrals detected in tx ${txHash}`
+        `[API] ⚠ Both TON (amount: ${referralTonAmount}) and jetton (amount: ${referralJettonAmount}) referrals detected in tx ${txHash}. Prioritizing jetton.`
       );
+      finalReferralAmount = referralJettonAmount;
+      finalReferralAddress = referralJettonAddress;
+    } else if (jettonPositive) {
+      finalReferralAmount = referralJettonAmount;
+      finalReferralAddress = referralJettonAddress;
+    } else if (tonPositive) {
+      finalReferralAmount = referralTonAmount;
+      finalReferralAddress = referralTonAddress;
+    } else {
+      if (referralJettonAmount !== null) {
+        finalReferralAmount = referralJettonAmount;
+        finalReferralAddress = referralJettonAddress;
+      } else if (referralTonAmount !== null) {
+        finalReferralAmount = referralTonAmount;
+        finalReferralAddress = referralTonAddress;
+      }
     }
-    const referralAmount =
-      referralJettonAmount !== null ? referralJettonAmount : referralTonAmount;
+
+    const referralAmount = finalReferralAmount;
+    referralAddress = finalReferralAddress;
 
     const mint = trace.actions.find((a) => a.type === "nft_mint");
     if (
