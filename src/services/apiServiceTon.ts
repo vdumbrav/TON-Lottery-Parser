@@ -7,7 +7,7 @@ import {
   JettonTransferDetails,
   TraceActionDetails,
 } from "../types/index.js";
-import { nanoToTon, delay, normalizeAddress } from "../core/utils.js";
+import { nanoToTon, delay, normalizeAddress, tryNormalizeAddress } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 1,
@@ -78,10 +78,8 @@ export class ApiServiceTon {
 
     if (!rawSource) return null;
 
-    let participant: string;
-    try {
-      participant = normalizeAddress(rawSource);
-    } catch {
+    const participant = tryNormalizeAddress(rawSource);
+    if (!participant) {
       console.warn(`[API-TON] ⚠ Invalid address: ${rawSource}`);
       return null;
     }
@@ -101,8 +99,8 @@ export class ApiServiceTon {
       const dest = details?.destination;
       const src = details?.source;
 
-      const destNorm = dest ? normalizeAddress(dest) : null;
-      const srcNorm = src ? normalizeAddress(src) : null;
+      const destNorm = dest ? tryNormalizeAddress(dest) : null;
+      const srcNorm = src ? tryNormalizeAddress(src) : null;
 
       const value = details?.value ? BigInt(details.value) : 0n;
 
@@ -120,9 +118,10 @@ export class ApiServiceTon {
         if (comment === "referral") {
           referralNano += value;
           if (!referralAddress && dest) {
-            try {
-              referralAddress = normalizeAddress(dest);
-            } catch {
+            const parsed = tryNormalizeAddress(dest);
+            if (parsed) {
+              referralAddress = parsed;
+            } else {
               console.warn(`[API-TON] invalid referral address: ${dest}`);
             }
           }
@@ -158,7 +157,7 @@ export class ApiServiceTon {
         ) {
           buyAmount = amount;
           buyCurrency = symbol;
-          buyMasterAddress = master ? normalizeAddress(master) : null;
+          buyMasterAddress = master ? tryNormalizeAddress(master) : null;
           purchaseRecorded = true;
         }
       }
@@ -172,8 +171,11 @@ export class ApiServiceTon {
       mint.details.nft_collection &&
       mint.details.nft_item_index
     ) {
-      const nftAddress = normalizeAddress(mint.details.nft_item);
-      const collectionAddress = normalizeAddress(mint.details.nft_collection);
+      const nftAddress = tryNormalizeAddress(mint.details.nft_item);
+      const collectionAddress = tryNormalizeAddress(
+        mint.details.nft_collection
+      );
+      if (!nftAddress || !collectionAddress) return null;
       const nftIndex = parseInt(mint.details.nft_item_index, 10);
       if (isNaN(nftIndex)) return null;
 

@@ -19,3 +19,15 @@ export function nanoToTon(nano: bigint): number {
 export function normalizeAddress(raw: string): string {
   return Address.parse(raw).toString({ bounceable: false, urlSafe: true });
 }
+
+/**
+ * Tries to normalize a raw address string. Returns null if
+ * the address cannot be parsed instead of throwing an error.
+ */
+export function tryNormalizeAddress(raw: string): string | null {
+  try {
+    return normalizeAddress(raw);
+  } catch {
+    return null;
+  }
+}
