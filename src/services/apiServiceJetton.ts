@@ -62,6 +62,19 @@ export class ApiServiceJetton {
     }
   }
 
+  private hasPrizeOpcode(details: TraceActionDetails): boolean {
+    const payloadCandidate = (details as JettonTransferDetailsV3)?.forward_payload;
+    if (typeof payloadCandidate !== "string") return false;
+    try {
+      const cell = Cell.fromBase64(payloadCandidate);
+      const slice = cell.beginParse();
+      const opcode = slice.loadUint(32);
+      return opcode === OP_PRIZ;
+    } catch {
+      return false;
+    }
+  }
+
   async fetchAllTraces(): Promise<RawTrace[]> {
     const traces: RawTrace[] = [];
     let offset = 0;
@@ -234,11 +247,16 @@ export class ApiServiceJetton {
             if (referralJettonPercent === null) {
               referralJettonPercent = percent;
             }
-          } else {
+            continue;
+          }
+
+          if (this.hasPrizeOpcode(action.details)) {
             wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
             wonJettonSymbol = transfer.symbol;
             winComment = `${transfer.amount} ${transfer.symbol}`;
+            continue;
           }
+
           continue;
         }
       }
