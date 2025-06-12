@@ -10,16 +10,14 @@ import {
 import { nanoToTon, delay, normalizeAddress } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
-  x1: 10,
-  x3: 25,
-  x7: 50,
-  x20: 180,
-  x77: 700,
-  x200: 1800,
-  jp: 10000,
-  "jackpot winner": 10000,
+  x1: 1,
+  x3: 3,
+  x7: 7,
+  x20: 20,
+  x77: 77,
+  x200: 200,
+  jp: 1000,
 };
-
 
 function isJettonDetails(
   details: TraceActionDetails
@@ -30,7 +28,7 @@ function isJettonDetails(
 export class ApiServiceTon {
   private client = axios.create({
     baseURL: CONFIG.apiEndpoint,
-    timeout: 10_000,
+    timeout: 10000,
     params: { api_key: CONFIG.apiKey },
   });
 
@@ -103,12 +101,8 @@ export class ApiServiceTon {
       const dest = details?.destination;
       const src = details?.source;
 
-      const destNorm = dest
-        ? normalizeAddress(dest)
-        : null;
-      const srcNorm = src
-        ? normalizeAddress(src)
-        : null;
+      const destNorm = dest ? normalizeAddress(dest) : null;
+      const srcNorm = src ? normalizeAddress(src) : null;
 
       const value = details?.value ? BigInt(details.value) : 0n;
 
@@ -179,9 +173,7 @@ export class ApiServiceTon {
       mint.details.nft_item_index
     ) {
       const nftAddress = normalizeAddress(mint.details.nft_item);
-      const collectionAddress = normalizeAddress(
-        mint.details.nft_collection
-      );
+      const collectionAddress = normalizeAddress(mint.details.nft_collection);
       const nftIndex = parseInt(mint.details.nft_item_index, 10);
       if (isNaN(nftIndex)) return null;
 
