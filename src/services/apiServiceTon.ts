@@ -7,7 +7,7 @@ import {
   JettonTransferDetails,
   TraceActionDetails,
 } from "../types/index.js";
-import { nanoToTon, delay, normalizeAddress, tryNormalizeAddress } from "../core/utils.js";
+import { nanoToTon, delay, tryNormalizeAddress } from "../core/utils.js";
 
 const PRIZE_MAP: Record<string, number> = {
   x1: 1,
@@ -32,7 +32,7 @@ export class ApiServiceTon {
     params: { api_key: CONFIG.apiKey },
   });
 
-  private contract = normalizeAddress(CONFIG.contractAddress);
+  private contract = tryNormalizeAddress(CONFIG.contractAddress);
 
   async fetchAllTraces(): Promise<RawTrace[]> {
     console.log("[API-TON] start fetching traces");

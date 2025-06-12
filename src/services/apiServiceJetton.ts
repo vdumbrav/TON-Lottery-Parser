@@ -8,7 +8,7 @@ import {
   TraceActionDetails,
   JettonTransferDetailsV3,
 } from "../types/index.js";
-import { nanoToTon, delay, normalizeAddress, tryNormalizeAddress } from "../core/utils.js";
+import { nanoToTon, delay, tryNormalizeAddress } from "../core/utils.js";
 
 const OP_PRIZ = 0x5052495a;
 const OP_REFF = 0x52454646;
@@ -37,7 +37,7 @@ export class ApiServiceJetton {
     params: { api_key: CONFIG.apiKey },
   });
 
-  private readonly contractAddress = normalizeAddress(CONFIG.contractAddress);
+  private readonly contractAddress = tryNormalizeAddress(CONFIG.contractAddress);
 
   private jettonMetadata: Record<string, any> = {};
 
