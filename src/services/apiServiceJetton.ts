@@ -8,7 +8,7 @@ import {
   TraceActionDetails,
   JettonTransferDetailsV3,
 } from "../types/index.js";
-import { nanoToTon, delay, normalizeAddress } from "../core/utils.js";
+import { nanoToTon, delay, tryNormalizeAddress } from "../core/utils.js";
 
 const OP_PRIZ = 0x5052495a;
 const OP_REFF = 0x52454646;
@@ -37,7 +37,7 @@ export class ApiServiceJetton {
     params: { api_key: CONFIG.apiKey },
   });
 
-  private readonly contractAddress = normalizeAddress(CONFIG.contractAddress);
+  private readonly contractAddress = tryNormalizeAddress(CONFIG.contractAddress);
 
   private jettonMetadata: Record<string, any> = {};
 
@@ -59,6 +59,19 @@ export class ApiServiceJetton {
       return percent;
     } catch {
       return null;
+    }
+  }
+
+  private hasPrizeOpcode(details: TraceActionDetails): boolean {
+    const payloadCandidate = (details as JettonTransferDetailsV3)?.forward_payload;
+    if (typeof payloadCandidate !== "string") return false;
+    try {
+      const cell = Cell.fromBase64(payloadCandidate);
+      const slice = cell.beginParse();
+      const opcode = slice.loadUint(32);
+      return opcode === OP_PRIZ;
+    } catch {
+      return false;
     }
   }
 
@@ -94,12 +107,18 @@ export class ApiServiceJetton {
         if (typeof metadata.symbol === "string") symbol = metadata.symbol;
         decimals = Number(metadata.extra?.decimals ?? decimals);
       }
+      const sender = tryNormalizeAddress(transfer.sender);
+      const receiver = tryNormalizeAddress(transfer.receiver);
+      const master = tryNormalizeAddress(transfer.asset);
+      if (!sender || !receiver || !master) {
+        throw new Error("Invalid jetton transfer address");
+      }
       return {
-        sender: normalizeAddress(transfer.sender),
-        receiver: normalizeAddress(transfer.receiver),
+        sender,
+        receiver,
         amount: this.convertJettonAmount(transfer.amount, decimals),
         symbol,
-        master: normalizeAddress(transfer.asset),
+        master,
       };
     }
     if (isJettonTransferV2(details)) {
@@ -107,12 +126,15 @@ export class ApiServiceJetton {
       const info = transfer.jetton ?? {};
       const decimals = Number(info.decimals ?? 9);
       const symbol = typeof info.symbol === "string" ? info.symbol : "JETTON";
-      const masterAddress = info.master
-        ? normalizeAddress(info.master)
-        : null;
+      const masterAddress = info.master ? tryNormalizeAddress(info.master) : null;
+      const sender = tryNormalizeAddress(transfer.source!);
+      const receiver = tryNormalizeAddress(transfer.destination!);
+      if (!sender || !receiver) {
+        throw new Error("Invalid jetton transfer address");
+      }
       return {
-        sender: normalizeAddress(transfer.source!),
-        receiver: normalizeAddress(transfer.destination!),
+        sender,
+        receiver,
         amount: this.convertJettonAmount(transfer.value, decimals),
         symbol,
         master: masterAddress,
@@ -136,10 +158,8 @@ export class ApiServiceJetton {
       trace.trace?.in_msg?.source;
     if (!initialSource) return null;
 
-    let participantAddress: string;
-    try {
-      participantAddress = normalizeAddress(initialSource);
-    } catch {
+    const participantAddress = tryNormalizeAddress(initialSource);
+    if (!participantAddress) {
       return null;
     }
 
@@ -168,10 +188,10 @@ export class ApiServiceJetton {
             ? BigInt(action.details.value)
             : 0n;
         const destination = action.details?.destination
-          ? normalizeAddress(action.details.destination)
+          ? tryNormalizeAddress(action.details.destination)
           : null;
         const source = action.details?.source
-          ? normalizeAddress(action.details.source)
+          ? tryNormalizeAddress(action.details.source)
           : null;
 
         if (
@@ -227,11 +247,16 @@ export class ApiServiceJetton {
             if (referralJettonPercent === null) {
               referralJettonPercent = percent;
             }
-          } else {
+            continue;
+          }
+
+          if (this.hasPrizeOpcode(action.details)) {
             wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
             wonJettonSymbol = transfer.symbol;
             winComment = `${transfer.amount} ${transfer.symbol}`;
+            continue;
           }
+
           continue;
         }
       }
@@ -270,10 +295,11 @@ export class ApiServiceJetton {
       const nftIndex = Number(mintAction.details.nft_item_index);
       if (Number.isNaN(nftIndex)) return null;
 
-      const nftAddress = normalizeAddress(mintAction.details.nft_item);
-      const collectionAddress = normalizeAddress(
+      const nftAddress = tryNormalizeAddress(mintAction.details.nft_item);
+      const collectionAddress = tryNormalizeAddress(
         mintAction.details.nft_collection
       );
+      if (!nftAddress || !collectionAddress) return null;
 
       return {
         ...baseTransaction,
