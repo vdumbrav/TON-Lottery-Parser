@@ -122,4 +122,5 @@ export interface LotteryTx {
   buyAmount: number | null;
   buyCurrency: string | null;
   buyMasterAddress: string | null;
+  textComment: string | null;
 }
