@@ -92,6 +92,7 @@ export class ApiServiceTon {
     let buyAmount: number | null = null;
     let buyCurrency: string | null = null;
     let buyMasterAddress: string | null = null;
+    let textComment: string | null = null;
     let purchaseRecorded = false;
 
     for (const action of trace.actions) {
@@ -105,7 +106,8 @@ export class ApiServiceTon {
       const value = details?.value ? BigInt(details.value) : 0n;
 
       if (action.type === "ton_transfer") {
-        const comment = details?.comment?.trim().toLowerCase();
+        const rawComment = details?.comment?.trim() || null;
+        const comment = rawComment ? rawComment.toLowerCase() : null;
         const prizeUsd = comment ? PRIZE_MAP[comment] : undefined;
 
         if (prizeUsd) {
@@ -125,6 +127,20 @@ export class ApiServiceTon {
               console.warn(`[API-TON] invalid referral address: ${dest}`);
             }
           }
+          continue;
+        }
+
+        if (
+          !purchaseRecorded &&
+          destNorm === this.contract &&
+          srcNorm === participant &&
+          value > 0n
+        ) {
+          buyAmount = nanoToTon(value);
+          buyCurrency = "TON";
+          buyMasterAddress = null;
+          textComment = rawComment;
+          purchaseRecorded = true;
           continue;
         }
       }
@@ -202,6 +218,7 @@ export class ApiServiceTon {
         buyAmount,
         buyCurrency,
         buyMasterAddress,
+        textComment,
       };
     }
 
@@ -229,6 +246,7 @@ export class ApiServiceTon {
         buyAmount,
         buyCurrency,
         buyMasterAddress,
+        textComment,
       };
     }
 

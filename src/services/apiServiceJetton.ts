@@ -318,6 +318,7 @@ export class ApiServiceJetton {
         buyAmount: purchaseAmount,
         buyCurrency: purchaseCurrency,
         buyMasterAddress: purchaseJettonMaster,
+        textComment: null,
       };
     }
 
@@ -339,6 +340,7 @@ export class ApiServiceJetton {
         buyAmount: purchaseAmount,
         buyCurrency: purchaseCurrency,
         buyMasterAddress: purchaseJettonMaster,
+        textComment: null,
       };
     }
 
