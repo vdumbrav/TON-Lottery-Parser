@@ -259,6 +259,16 @@ export class ApiServiceJetton {
 
           continue;
         }
+
+        if (
+          transfer.receiver === participantAddress &&
+          this.hasPrizeOpcode(action.details)
+        ) {
+          wonJettonAmount = (wonJettonAmount ?? 0) + transfer.amount;
+          wonJettonSymbol = transfer.symbol;
+          winComment = `${transfer.amount} ${transfer.symbol}`;
+          continue;
+        }
       }
     }
 
