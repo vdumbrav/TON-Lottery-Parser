@@ -8,6 +8,6 @@ export function createTonApiService() {
     return new ApiServiceJetton();
   }
 
-  console.log("[FACTORY] Using TON parser");
+  console.log("[FACTORY] Using TON parser (API v3)");
   return new ApiServiceTon();
 }

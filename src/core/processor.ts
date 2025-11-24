@@ -2,6 +2,7 @@ import { createTonApiService } from "../services/tonApiFactory.js";
 import { CsvService } from "../services/csvService.js";
 import { StateService } from "../services/stateService.js";
 import { LotteryTx } from "../types/index.js";
+import { CONFIG } from "../config/config.js";
 
 export class Processor {
   private api = createTonApiService();
@@ -10,40 +11,47 @@ export class Processor {
 
   async run() {
     console.log("[PROC] start");
+
+    // API v3: Incremental fetching
     const lastLt = await this.state.getLastLt();
+    let totalProcessed = 0;
+    let currentMaxLt = lastLt;
 
-    let traces = await this.api.fetchAllTraces();
+    await (this.api as any).fetchTracesIncremental(lastLt, async (traces: any[]) => {
+      const newTraces = lastLt
+        ? traces.filter((t) => BigInt(t.start_lt) > BigInt(lastLt))
+        : traces;
 
-    if (lastLt) {
-      traces = traces.filter((t) => BigInt(t.start_lt) > BigInt(lastLt));
-    }
+      if (!newTraces.length) return;
 
-    if (!traces.length) {
+      const rows = newTraces
+        .map((t) => (this.api as any).mapTraceToLotteryTx(t))
+        .filter((r): r is LotteryTx => r !== null && r !== undefined);
+
+      if (rows.length === 0) return;
+
+      await this.csv.append(rows);
+
+      const batchMaxLt = rows
+        .map((r) => BigInt(r.lt))
+        .reduce((a, b) => (a > b ? a : b), BigInt(rows[0].lt))
+        .toString();
+
+      if (!currentMaxLt || BigInt(batchMaxLt) > BigInt(currentMaxLt)) {
+        currentMaxLt = batchMaxLt;
+        await this.state.saveLastLt(currentMaxLt);
+      }
+
+      totalProcessed += rows.length;
+      console.log(`[PROC] batch: ${rows.length} rows | total: ${totalProcessed}`);
+    });
+
+    if (totalProcessed === 0) {
       console.log("[PROC] no new traces");
-      console.log("[PROC] end");
-      return;
+    } else {
+      console.log(`[PROC] completed: ${totalProcessed} total rows`);
     }
 
-    const rows = traces
-      .map((t) => this.api.mapTraceToLotteryTx(t))
-      .filter((r): r is LotteryTx => r !== null && r !== undefined);
-
-    if (rows.length === 0) {
-      console.log("[PROC] no valid parsed rows");
-      console.log("[PROC] end");
-      return;
-    }
-
-    await this.csv.append(rows);
-
-    const maxLt = rows
-      .map((r) => BigInt(r.lt))
-      .reduce((a, b) => (a > b ? a : b), BigInt(rows[0].lt))
-      .toString();
-
-    await this.state.saveLastLt(maxLt);
-
-    console.log(`[PROC] processed ${rows.length} rows`);
     console.log("[PROC] end");
   }
 }
