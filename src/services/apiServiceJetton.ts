@@ -9,9 +9,11 @@ import {
   JettonTransferDetailsV3,
 } from "../types/index.js";
 import { nanoToTon, delay, tryNormalizeAddress } from "../core/utils.js";
+import { TransactionValidator } from "../core/validator.js";
 
 const OP_PRIZ = 0x5052495a;
 const OP_REFF = 0x52454646;
+const OP_DEPLOY = 0x801b4fb4;
 
 function isJettonTransferV2(
   details: TraceActionDetails
@@ -38,6 +40,7 @@ export class ApiServiceJetton {
   });
 
   private readonly contractAddress = tryNormalizeAddress(CONFIG.contractAddress);
+  private readonly validator = new TransactionValidator(CONFIG.contractAddress);
 
   private jettonMetadata: Record<string, any> = {};
 
@@ -92,9 +95,49 @@ export class ApiServiceJetton {
       traces.push(...batch);
       if (data.metadata) Object.assign(this.jettonMetadata, data.metadata);
       offset += CONFIG.pageLimit;
-      await delay(1000);
+      await delay(3000);
     }
     return traces;
+  }
+
+  async fetchTracesIncremental(
+    lastLt: string | null,
+    onBatch: (traces: RawTrace[]) => Promise<void>
+  ): Promise<void> {
+    console.log("[API-JETTON] start fetching traces (incremental)");
+    let offset = 0;
+    let totalFetched = 0;
+
+    while (true) {
+      console.log(`[API-JETTON] fetching batch at offset ${offset}...`);
+
+      const { data } = await this.apiClient.get("/traces", {
+        params: {
+          account: CONFIG.contractAddress,
+          limit: CONFIG.pageLimit,
+          offset,
+          include_actions: true,
+        },
+      });
+
+      const traces: RawTrace[] = data.traces ?? [];
+      if (!traces.length) break;
+
+      if (data.metadata) Object.assign(this.jettonMetadata, data.metadata);
+
+      totalFetched += traces.length;
+      console.log(`[API-JETTON] fetched ${traces.length} traces (total: ${totalFetched})`);
+
+      // Process batch immediately
+      await onBatch(traces);
+
+      offset += CONFIG.pageLimit;
+
+      // Delay 1s before next request
+      await delay(3000);
+    }
+
+    console.log(`[API-JETTON] completed: ${totalFetched} total traces fetched`);
   }
 
   private extractJettonTransfer(details: TraceActionDetails) {
@@ -162,6 +205,9 @@ export class ApiServiceJetton {
     if (!participantAddress) {
       return null;
     }
+
+    // Validate the transaction
+    const validation = this.validator.validateTrace(trace, participantAddress);
 
     let winComment: string | null = null;
     let wonTonNano = 0n;
@@ -284,74 +330,65 @@ export class ApiServiceJetton {
       finalReferralReceiver = referralTonReceiver;
     }
 
-    const mintAction = trace.actions.find(
-      (action) => action.type === "nft_mint"
-    );
+    let nftAddress: string | null = null;
+    let collectionAddress: string | null = null;
+    let nftIndex: number | null = null;
 
-    const baseTransaction = {
+    for (const action of trace.actions) {
+      if (action.type === "nft_mint" && action.details) {
+        if (action.details.nft_item && action.details.nft_collection && action.details.nft_item_index !== undefined) {
+          const nftAddr = tryNormalizeAddress(action.details.nft_item);
+          const collAddr = tryNormalizeAddress(action.details.nft_collection);
+
+          if (nftAddr && collAddr) {
+            nftAddress = nftAddr;
+            collectionAddress = collAddr;
+            const idx = parseInt(action.details.nft_item_index, 10);
+            if (!isNaN(idx)) {
+              nftIndex = idx;
+            }
+            break;
+          }
+        }
+      }
+
+      if (action.type === "contract_deploy" && action.details && !nftAddress) {
+        const opcode = Number(action.details.opcode);
+        if (opcode === OP_DEPLOY) {
+          const nftAddr = action.details.destination ? tryNormalizeAddress(action.details.destination) : null;
+          const collAddr = action.details.source ? tryNormalizeAddress(action.details.source) : null;
+
+          if (nftAddr && collAddr) {
+            nftAddress = nftAddr;
+            collectionAddress = collAddr;
+          }
+        }
+      }
+    }
+
+    return {
       participant: participantAddress,
       timestamp: trace.start_utime,
       txHash: transactionHashHex,
       lt: trace.start_lt,
+      nftAddress,
+      collectionAddress,
+      nftIndex,
+      isWin: Boolean(winComment),
+      winComment,
+      winAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
+      winJettonAmount: wonJettonAmount ?? null,
+      winJettonSymbol: wonJettonSymbol ?? null,
+      winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
+      referralAmount: finalReferralAmount,
+      referralPercent: finalReferralPercent,
+      referralAddress: finalReferralReceiver,
+      buyAmount: purchaseAmount,
+      buyCurrency: purchaseCurrency,
+      buyMasterAddress: purchaseJettonMaster,
+      isFake: validation.isFake,
+      fakeReason: validation.fakeReason,
+      validationScore: validation.validationScore,
     };
-
-    if (
-      mintAction &&
-      mintAction.details &&
-      typeof mintAction.details.nft_item === "string" &&
-      typeof mintAction.details.nft_collection === "string" &&
-      typeof mintAction.details.nft_item_index === "string"
-    ) {
-      const nftIndex = Number(mintAction.details.nft_item_index);
-      if (Number.isNaN(nftIndex)) return null;
-
-      const nftAddress = tryNormalizeAddress(mintAction.details.nft_item);
-      const collectionAddress = tryNormalizeAddress(
-        mintAction.details.nft_collection
-      );
-      if (!nftAddress || !collectionAddress) return null;
-
-      return {
-        ...baseTransaction,
-        nftAddress,
-        collectionAddress,
-        nftIndex,
-        isWin: Boolean(winComment),
-        winComment,
-        winAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
-        winJettonAmount: wonJettonAmount ?? null,
-        winJettonSymbol: wonJettonSymbol ?? null,
-        winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
-        referralAmount: finalReferralAmount,
-        referralPercent: finalReferralPercent,
-        referralAddress: finalReferralReceiver,
-        buyAmount: purchaseAmount,
-        buyCurrency: purchaseCurrency,
-        buyMasterAddress: purchaseJettonMaster,
-      };
-    }
-
-    if (winComment || finalReferralAmount) {
-      return {
-        ...baseTransaction,
-        nftAddress: null,
-        collectionAddress: null,
-        nftIndex: null,
-        isWin: Boolean(winComment),
-        winComment,
-        winAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
-        winJettonAmount: wonJettonAmount ?? null,
-        winJettonSymbol: wonJettonSymbol ?? null,
-        winTonAmount: wonTonNano ? nanoToTon(wonTonNano) : null,
-        referralAmount: finalReferralAmount,
-        referralPercent: finalReferralPercent,
-        referralAddress: finalReferralReceiver,
-        buyAmount: purchaseAmount,
-        buyCurrency: purchaseCurrency,
-        buyMasterAddress: purchaseJettonMaster,
-      };
-    }
-
-    return null;
   }
 }

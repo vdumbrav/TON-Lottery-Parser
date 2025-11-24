@@ -122,4 +122,8 @@ export interface LotteryTx {
   buyAmount: number | null;
   buyCurrency: string | null;
   buyMasterAddress: string | null;
+  // New fields for fake detection
+  isFake: boolean;
+  fakeReason: string | null;
+  validationScore: number; // 0-100, where 100 is fully valid transaction
 }
