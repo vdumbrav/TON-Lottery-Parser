@@ -31,7 +31,7 @@ export class ApiServiceTon {
 
     this.client = axios.create({
       baseURL: CONFIG.apiEndpoint,
-      timeout: 10000,
+      timeout: 60000,
       params: {
         api_key: CONFIG.apiKey,
       },
