@@ -10,21 +10,22 @@
     "build": "tsc",
     "dev": "node --loader ts-node/esm src/index.ts",
     "start": "npm run build && node dist/index.js",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "analyze": "npm run build && node dist/analyze-fakes.js"
   },
   "dependencies": {
     "@ton/core": "^0.60.1",
-    "@ton/ton": "^15.2.1",
-    "axios": "^1.9.0",
-    "dotenv": "^16.5.0",
+    "@ton/ton": "^15.4.0",
+    "axios": "^1.13.2",
+    "dotenv": "^16.6.1",
     "papaparse": "^5.5.3"
   },
   "devDependencies": {
-    "@types/node": "^22.15.30",
-    "@types/papaparse": "^5.3.16",
+    "@types/node": "^22.19.1",
+    "@types/papaparse": "^5.5.0",
     "rimraf": "^5.0.10",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
   "keywords": [
     "ton",
