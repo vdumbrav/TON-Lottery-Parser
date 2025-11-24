@@ -1,6 +1,6 @@
 # TON Lottery Parser
 
-A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a USDT-based TON smart-contract lottery on Testnet, parses them, and appends structured records into a CSV file for further analysis.
+A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize payouts from a TON smart-contract lottery on Mainnet, parses them, validates transactions, and appends structured records into a CSV file for further analysis.
 
 ---
 
@@ -10,6 +10,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
 - **Incremental updates**: remembers the last processed logical time (`lt`) and only fetches newer ones on each run.
 - **NFT-mint focus**: processes all traces that include an `nft_mint` action.
 - **Prize-only support**: traces with a `ton_transfer` prize but no `nft_mint` (e.g. manual jackpot payout) are also supported.
+- **Fake transaction detection**: validates all transactions using a multi-factor scoring system to identify suspicious activity.
 - **Structured output**: appends to a CSV with the following columns:
 
   - `participant` — wallet that minted the NFT or received the prize
@@ -31,25 +32,28 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
   - `buyAmount` — amount the participant paid for the ticket
   - `buyCurrency` — currency used for the ticket purchase (e.g. `TON` or jetton symbol)
   - `buyMasterAddress` — jetton master address of the purchase currency
+  - `isFake` — boolean flag indicating if transaction is suspicious
+  - `fakeReason` — description of why transaction was flagged as fake (if applicable)
+  - `validationScore` — validation score (0-100, higher is more legitimate)
 
 - **Prize logic**: prizes are detected by comments in `ton_transfer` actions, matched via:
 
-  | Comment          | Prize |
-  | ---------------- | ----- |
-  | `x1`             | 10    |
-  | `x3`             | 25    |
-  | `x7`             | 50    |
-  | `x20`            | 180   |
-  | `x77`            | 700   |
-  | `x200`           | 1800  |
-  | `jp`             | 10000 |
-  | `Jackpot winner` | 10000 |
+  | Comment          | Prize (USD) |
+  | ---------------- | ----------- |
+  | `x1`             | 1           |
+  | `x3`             | 3           |
+  | `x7`             | 7           |
+  | `x20`            | 20          |
+  | `x77`            | 77          |
+  | `x200`           | 200         |
+  | `jp`/`jackpot`   | 1000        |
 
 - **Type-safe**: written in TypeScript with strict TON schema typings
 - **Modular** architecture:
 
-  - `services/tonApiService.ts` – fetches traces and maps them to structured records
+  - `services/apiServiceTon.ts` – fetches traces and maps them to structured records
   - `core/processor.ts` – coordinates fetch → parse → write → save
+  - `core/validator.ts` – validates transactions and detects fake activity
   - `services/csvService.ts` – appends records to CSV using PapaParse
   - `services/stateService.ts` – tracks the last processed `lt` in `data/state.json`
   - `config/config.ts` – env-driven configuration
@@ -59,7 +63,7 @@ A TypeScript/Node.js CLI tool that fetches **all** NFT-minting traces and prize 
 ## Prerequisites
 
 - Node.js ≥ 20 (ESM + top-level `await`)
-- A TON Center **Testnet API key**
+- A TON Center **Mainnet API key**
 - NPM or Yarn
 
 ---
@@ -75,10 +79,11 @@ npm install
 Create a `.env`:
 
 ```dotenv
-TONCENTER_API_URL=https://testnet.toncenter.com/api/v3
-TONCENTER_API_KEY=YOUR_TESTNET_API_KEY
-TON_CONTRACT_ADDRESS=kQD4Frl7oL3vuMqTZ812zB-lRSTcrogKu6MFx3Fl3V1ieuWb
-PAGE_LIMIT=50
+TONCENTER_API_URL=https://toncenter.com/api/v3
+TONCENTER_API_KEY=YOUR_MAINNET_API_KEY
+TON_CONTRACT_ADDRESS=EQCHbnxDzu6b7U25pLV2V1cWwh1IxxtHPKmZky4Wpo-m-WuM
+CONTRACT_TYPE=TON
+PAGE_LIMIT=100
 ```
 
 ### Type checking
@@ -127,6 +132,43 @@ yarn start
 | buyAmount         | Amount the participant paid for the ticket                          |
 | buyCurrency       | Currency used for the ticket purchase (e.g. `TON` or jetton symbol) |
 | buyMasterAddress  | Jetton master address of the purchase currency                      |
+| isFake            | Boolean flag indicating if transaction is suspicious                |
+| fakeReason        | Description of why transaction was flagged as fake                  |
+| validationScore   | Validation score (0-100, higher = more legitimate)                  |
+
+---
+
+## Transaction Validation
+
+The parser includes a sophisticated validation system to detect fake/suspicious transactions:
+
+### Validation Factors
+
+1. **Transaction Flow** (40 points)
+   - Payment to contract → NFT mint → prize payout (if win)
+   - Correct sequence and participants
+   - Referral payouts to different addresses
+
+2. **Timing Analysis** (20 points)
+   - Realistic time gaps between actions
+   - No instant back-and-forth transfers
+
+3. **Amount Verification** (20 points)
+   - Purchase amounts match expected ticket prices
+   - Prize amounts correspond to comment tags
+
+4. **Address Diversity** (20 points)
+   - Participant ≠ Contract
+   - Referral addresses are distinct (when applicable)
+
+### Validation Score
+
+- **100**: Fully legitimate transaction
+- **80-99**: Likely legitimate with minor issues
+- **50-79**: Suspicious, requires review
+- **< 50**: High probability of fake transaction
+
+Transactions with `validationScore < 80` are flagged as `isFake=true` with a reason in `fakeReason`.
 
 ---
 
@@ -152,6 +194,7 @@ yarn start
   `normalizeAddress()` function for converting raw wallet addresses
   to the canonical bounceable-`false`, URL-safe format used throughout
   the services.
+- All transactions are validated using `core/validator.ts` with scoring and fake detection
 
 ---
 
