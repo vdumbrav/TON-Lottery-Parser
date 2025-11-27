@@ -17,14 +17,18 @@ export class Processor {
     let totalProcessed = 0;
     let currentMaxLt = lastLt;
 
-    await (this.api as any).fetchTracesIncremental(lastLt, async (traces: any[]) => {
-      const newTraces = lastLt
-        ? traces.filter((t) => BigInt(t.start_lt) > BigInt(lastLt))
-        : traces;
+    await (this.api as any).fetchTracesIncremental(lastLt, async (txs: any[]) => {
+      // TonAPI transactions use 'lt' as a number
+      const newTxs = lastLt
+        ? txs.filter((t) => {
+            const txLt = t.lt ?? t.start_lt;
+            return BigInt(txLt) > BigInt(lastLt);
+          })
+        : txs;
 
-      if (!newTraces.length) return;
+      if (!newTxs.length) return;
 
-      const rows = newTraces
+      const rows = newTxs
         .map((t) => (this.api as any).mapTraceToLotteryTx(t))
         .filter((r): r is LotteryTx => r !== null && r !== undefined);
 

@@ -33,16 +33,25 @@ function isJettonTransferV3(
 }
 
 export class ApiServiceJetton {
-  private readonly apiClient = axios.create({
-    baseURL: CONFIG.apiEndpoint,
-    timeout: 10000,
-    params: { api_key: CONFIG.apiKey },
-  });
-
+  private readonly apiClient;
   private readonly contractAddress = tryNormalizeAddress(CONFIG.contractAddress);
   private readonly validator = new TransactionValidator(CONFIG.contractAddress);
-
   private jettonMetadata: Record<string, any> = {};
+
+  constructor() {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (CONFIG.apiKey) {
+      headers["Authorization"] = `Bearer ${CONFIG.apiKey}`;
+    }
+
+    this.apiClient = axios.create({
+      baseURL: CONFIG.apiEndpoint,
+      timeout: 60000,
+      headers,
+    });
+  }
 
   private convertJettonAmount(rawAmount?: string, decimals = 9): number {
     if (!rawAmount) return 0;
@@ -79,24 +88,37 @@ export class ApiServiceJetton {
   }
 
   async fetchAllTraces(): Promise<RawTrace[]> {
+    console.log("[API-JETTON] start fetching traces from tonapi.io");
     const traces: RawTrace[] = [];
-    let offset = 0;
+    let beforeLt: string | undefined = undefined;
+
     while (true) {
-      const { data } = await this.apiClient.get("/traces", {
-        params: {
-          account: CONFIG.contractAddress,
-          limit: CONFIG.pageLimit,
-          offset,
-          include_actions: true,
-        },
-      });
+      const params: Record<string, any> = {
+        limit: CONFIG.pageLimit,
+      };
+      if (beforeLt) {
+        params.before_lt = beforeLt;
+      }
+
+      const { data } = await this.apiClient.get(
+        `/v2/accounts/${CONFIG.contractAddress}/events`,
+        { params }
+      );
+
       const batch: RawTrace[] = data.traces ?? [];
       if (!batch.length) break;
+
       traces.push(...batch);
-      if (data.metadata) Object.assign(this.jettonMetadata, data.metadata);
-      offset += CONFIG.pageLimit;
-      await delay(3000);
+
+      // Get the last trace's lt for pagination
+      const lastTrace = batch[batch.length - 1];
+      beforeLt = lastTrace.start_lt;
+
+      if (batch.length < CONFIG.pageLimit) break;
+      await delay(1100); // Rate limit: 1 req/s
     }
+
+    console.log(`[API-JETTON] fetched ${traces.length} traces`);
     return traces;
   }
 
@@ -104,37 +126,53 @@ export class ApiServiceJetton {
     lastLt: string | null,
     onBatch: (traces: RawTrace[]) => Promise<void>
   ): Promise<void> {
-    console.log("[API-JETTON] start fetching traces (incremental)");
-    let offset = 0;
+    console.log("[API-JETTON] start fetching traces (incremental) from tonapi.io");
+    let beforeLt: string | undefined = undefined;
     let totalFetched = 0;
+    let shouldStop = false;
 
-    while (true) {
-      console.log(`[API-JETTON] fetching batch at offset ${offset}...`);
+    while (!shouldStop) {
+      const params: Record<string, any> = {
+        limit: CONFIG.pageLimit,
+      };
+      if (beforeLt) {
+        params.before_lt = beforeLt;
+      }
 
-      const { data } = await this.apiClient.get("/traces", {
-        params: {
-          account: CONFIG.contractAddress,
-          limit: CONFIG.pageLimit,
-          offset,
-          include_actions: true,
-        },
-      });
+      console.log(`[API-JETTON] fetching batch...`);
+
+      const { data } = await this.apiClient.get(
+        `/v2/accounts/${CONFIG.contractAddress}/events`,
+        { params }
+      );
 
       const traces: RawTrace[] = data.traces ?? [];
       if (!traces.length) break;
 
-      if (data.metadata) Object.assign(this.jettonMetadata, data.metadata);
-
       totalFetched += traces.length;
       console.log(`[API-JETTON] fetched ${traces.length} traces (total: ${totalFetched})`);
 
-      // Process batch immediately
-      await onBatch(traces);
+      // Filter new traces (those with lt greater than lastLt)
+      const newTraces = lastLt
+        ? traces.filter(t => BigInt(t.start_lt) > BigInt(lastLt))
+        : traces;
 
-      offset += CONFIG.pageLimit;
+      if (newTraces.length > 0) {
+        await onBatch(newTraces);
+      }
 
-      // Delay 1s before next request
-      await delay(3000);
+      // If we've reached already processed transactions, stop
+      if (lastLt && newTraces.length < traces.length) {
+        shouldStop = true;
+        break;
+      }
+
+      // Get the last trace's lt for pagination
+      const lastTrace = traces[traces.length - 1];
+      beforeLt = lastTrace.start_lt;
+
+      if (traces.length < CONFIG.pageLimit) break;
+      await delay(1100); // Rate limit: 1 req/s
     }
 
     console.log(`[API-JETTON] completed: ${totalFetched} total traces fetched`);

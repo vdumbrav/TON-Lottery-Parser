@@ -1,25 +1,22 @@
 import axios from "axios";
 import { CONFIG } from "../config/config.js";
-import { LotteryTx, RawTrace, TraceAction, Transaction } from "../types/index.js";
-import { tryNormalizeAddress } from "../core/utils.js";
-import { delay } from "../core/utils.js";
-import { TransactionValidator } from "../core/validator.js";
-
-const PRIZE_MAP: Record<string, number> = {
-  x1: 1,
-  x3: 3,
-  x7: 7,
-  x20: 20,
-  x77: 77,
-  x200: 200,
-  jp: 1000,
-  jackpot: 1000,
-};
+import { LotteryTx } from "../types/index.js";
+import { tryNormalizeAddress, delay } from "../core/utils.js";
+import {
+  TonApiTransaction,
+  TonApiTransactionsResponse,
+} from "../types/tonApi.js";
+import {
+  PRIZE_MAP,
+  OP_PRIZ,
+  OP_REFF,
+  CONTRACT_DATA_INDEX,
+} from "../constants/lottery.js";
 
 export class ApiServiceTon {
-  private client: any;
+  private client;
   private contract: string;
-  private validator: TransactionValidator;
+  private ticketPrice: number | null = null;
 
   constructor() {
     const normalizedContract = tryNormalizeAddress(CONFIG.contractAddress);
@@ -27,282 +24,253 @@ export class ApiServiceTon {
       throw new Error(`Invalid contract address: ${CONFIG.contractAddress}`);
     }
     this.contract = normalizedContract;
-    this.validator = new TransactionValidator(normalizedContract);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (CONFIG.apiKey) {
+      headers["Authorization"] = `Bearer ${CONFIG.apiKey}`;
+    }
 
     this.client = axios.create({
       baseURL: CONFIG.apiEndpoint,
       timeout: 60000,
-      params: {
-        api_key: CONFIG.apiKey,
-      },
+      headers,
     });
   }
 
-  async fetchAllTraces(): Promise<RawTrace[]> {
-    console.log("[API-TON] start fetching traces");
-    const all: RawTrace[] = [];
-    let offset = 0;
-
-    while (true) {
-      const { data } = await this.client.get("/traces", {
-        params: {
-          account: CONFIG.contractAddress,
-          limit: CONFIG.pageLimit,
-          offset,
-          include_actions: true,
-        },
-      });
-
-      const traces = (data.traces as RawTrace[]) || [];
-      if (!traces.length) break;
-      all.push(...traces);
-      offset += CONFIG.pageLimit;
-      await delay(1000);
+  /**
+   * Fetch ticket price from contract via get_full_data method (using toncenter API)
+   */
+  async fetchTicketPrice(): Promise<number> {
+    if (this.ticketPrice !== null) {
+      return this.ticketPrice;
     }
 
-    console.log(`[API-TON] fetched ${all.length} traces`);
+    try {
+      const toncenterUrl = CONFIG.isTestnet
+        ? "https://testnet.toncenter.com/api/v3"
+        : "https://toncenter.com/api/v3";
+
+      const { data } = await axios.get(
+        `${toncenterUrl}/runGetMethod`,
+        {
+          params: {
+            address: CONFIG.contractAddress,
+            method: "get_full_data",
+          },
+          timeout: 15000,
+        }
+      );
+
+      // Parse stack: ticket price for TON is at index 4
+      const stack = data.result?.stack || [];
+      const priceIndex = CONTRACT_DATA_INDEX.TICKET_PRICE_TON;
+
+      if (stack[priceIndex]) {
+        const priceNano = BigInt(stack[priceIndex][1] || "1000000000");
+        this.ticketPrice = Number(priceNano) / 1e9;
+      } else {
+        this.ticketPrice = 1;
+      }
+
+      console.log(`[API-TON] Ticket price from contract: ${this.ticketPrice} TON`);
+      return this.ticketPrice;
+    } catch (err) {
+      console.warn("[API-TON] Failed to fetch ticket price, using default 1 TON");
+      this.ticketPrice = 1;
+      return this.ticketPrice;
+    }
+  }
+
+  async fetchAllTraces(): Promise<TonApiTransaction[]> {
+    console.log("[API-TON] start fetching transactions from tonapi.io");
+    const all: TonApiTransaction[] = [];
+    let beforeLt: number | undefined = undefined;
+
+    while (true) {
+      const params: Record<string, any> = {
+        limit: CONFIG.pageLimit,
+      };
+      if (beforeLt) {
+        params.before_lt = beforeLt;
+      }
+
+      const { data } = await this.client.get(
+        `/v2/blockchain/accounts/${CONFIG.contractAddress}/transactions`,
+        { params }
+      );
+
+      const response = data as TonApiTransactionsResponse;
+      const txs = response.transactions || [];
+      if (!txs.length) break;
+
+      all.push(...txs);
+
+      if (all.length % 500 === 0 || txs.length < CONFIG.pageLimit) {
+        console.log(`[API-TON] fetched ${all.length} transactions...`);
+      }
+
+      const lastTx = txs[txs.length - 1];
+      beforeLt = lastTx.lt;
+
+      if (txs.length < CONFIG.pageLimit) break;
+      await delay(1100);
+    }
+
+    console.log(`[API-TON] fetched ${all.length} transactions total`);
     return all;
   }
 
   async fetchTracesIncremental(
     lastLt: string | null,
-    onBatch: (traces: RawTrace[]) => Promise<void>
+    onBatch: (txs: TonApiTransaction[]) => Promise<void>
   ): Promise<void> {
-    console.log("[API-TON] start fetching traces (incremental)");
-    let offset = 0;
+    console.log("[API-TON] start fetching transactions (incremental) from tonapi.io");
+
+    // Fetch ticket price from contract first
+    const ticketPrice = await this.fetchTicketPrice();
+
+    let beforeLt: number | undefined = undefined;
     let totalFetched = 0;
+    let shouldStop = false;
+    const lastLtNum = lastLt ? Number(lastLt) : null;
 
-    while (true) {
-      console.log(`[API-TON] fetching batch at offset ${offset}...`);
-
-      const { data } = await this.client.get("/traces", {
-        params: {
-          account: CONFIG.contractAddress,
-          limit: CONFIG.pageLimit,
-          offset,
-          include_actions: true,
-        },
-      });
-
-      const traces = (data.traces as RawTrace[]) || [];
-      if (!traces.length) break;
-
-      totalFetched += traces.length;
-
-      const newTraces = lastLt
-        ? traces.filter(t => BigInt(t.start_lt) > BigInt(lastLt))
-        : traces;
-
-      if (newTraces.length > 0) {
-        console.log(`[API-TON] processing ${newTraces.length} new traces...`);
-        await onBatch(newTraces);
+    while (!shouldStop) {
+      const params: Record<string, any> = {
+        limit: CONFIG.pageLimit,
+      };
+      if (beforeLt) {
+        params.before_lt = beforeLt;
       }
 
-      if (traces.length < CONFIG.pageLimit) break;
-      offset += CONFIG.pageLimit;
+      console.log(`[API-TON] fetching batch... (total: ${totalFetched})`);
 
-      await delay(3000);
+      const { data } = await this.client.get(
+        `/v2/blockchain/accounts/${CONFIG.contractAddress}/transactions`,
+        { params }
+      );
+
+      const response = data as TonApiTransactionsResponse;
+      const txs = response.transactions || [];
+      if (!txs.length) break;
+
+      totalFetched += txs.length;
+
+      const newTxs = lastLtNum
+        ? txs.filter((t: TonApiTransaction) => t.lt > lastLtNum)
+        : txs;
+
+      if (newTxs.length > 0) {
+        await onBatch(newTxs);
+      }
+
+      if (lastLtNum && newTxs.length < txs.length) {
+        shouldStop = true;
+        break;
+      }
+
+      const lastTx = txs[txs.length - 1];
+      beforeLt = lastTx.lt;
+
+      if (txs.length < CONFIG.pageLimit) break;
+      await delay(1100);
     }
 
-    console.log(`[API-TON] Total fetched: ${totalFetched} traces`);
+    console.log(`[API-TON] Total fetched: ${totalFetched} transactions`);
   }
 
-  private b64ToHex(b64: string): string {
-    return Buffer.from(b64, "base64").toString("hex");
-  }
+  mapTraceToLotteryTx(tx: TonApiTransaction): LotteryTx | null {
+    if (!tx.in_msg) return null;
 
-  mapTraceToLotteryTx(trace: RawTrace): LotteryTx | null {
-    if (!trace.actions || !trace.transactions_order) return null;
+    const txHash = tx.hash;
 
-    const rootB64 = trace.trace?.tx_hash ?? trace.trace_id;
-    const txHash = rootB64 ? this.b64ToHex(rootB64) : null;
-    if (!txHash) return null;
+    // Get participant from incoming message source
+    const participantRaw = tx.in_msg.source?.address;
+    if (!participantRaw) return null;
 
-    // Get the first transaction to identify participant
-    const firstTx = trace.transactions_order[0];
-    const rawSource =
-      trace.transactions[firstTx]?.in_msg?.source ??
-      trace.transactions[firstTx]?.account;
+    const participant = tryNormalizeAddress(participantRaw);
+    if (!participant) return null;
 
-    if (!rawSource) return null;
+    // Check if this is a transaction TO our contract
+    const destAddr = tx.in_msg.destination?.address;
+    const destNorm = destAddr ? tryNormalizeAddress(destAddr) : null;
+    if (destNorm !== this.contract) return null;
 
-    const participant = tryNormalizeAddress(rawSource);
-    if (!participant) {
-      console.warn(`[API-TON] ⚠ Invalid address: ${rawSource}`);
-      return null;
+    // Get purchase amount from incoming message
+    let buyAmount: number | null = null;
+    let buyCurrency: string | null = null;
+
+    if (tx.in_msg.value && tx.in_msg.value > 0) {
+      buyAmount = tx.in_msg.value / 1e9;
+      buyCurrency = "TON";
     }
 
-    const validation = this.validator.validateTrace(trace, participant);
+    // Validate by ticket price from contract
+    const ticketPrice = this.ticketPrice || 1;
+    if (!buyAmount || buyAmount !== ticketPrice) return null;
 
+    // Process outgoing messages for wins and referrals
     let winComment: string | null = null;
     let winAmount = 0;
     let winTonNano = 0n;
-    let referralNano = 0n;
+    let referralAmount: number | null = null;
     let referralAddress: string | null = null;
-    let buyAmount: number | null = null;
-    let buyCurrency: string | null = null;
-    let buyMasterAddress: string | null = null;
-    let purchaseRecorded = false;
 
-    let nftAddress: string | null = null;
-    let collectionAddress: string | null = null;
-    let nftIndex: number | null = null;
+    if (tx.out_msgs) {
+      for (const msg of tx.out_msgs) {
+        const recipientAddr = msg.destination?.address;
+        const recipientNorm = recipientAddr ? tryNormalizeAddress(recipientAddr) : null;
+        const comment = msg.decoded_body?.text?.trim().toLowerCase();
+        const opCode = msg.op_code ? parseInt(msg.op_code, 16) : null;
 
-    for (const action of trace.actions) {
-      const details = action.details;
-
-      if (action.type === "nft_mint" && details) {
-        if (details.nft_item && details.nft_collection && details.nft_item_index !== undefined) {
-          const nftAddr = tryNormalizeAddress(details.nft_item);
-          const collAddr = tryNormalizeAddress(details.nft_collection);
-
-          if (nftAddr && collAddr) {
-            nftAddress = nftAddr;
-            collectionAddress = collAddr;
-            const idx = parseInt(details.nft_item_index, 10);
-            if (!isNaN(idx)) {
-              nftIndex = idx;
+        // Check for win (by opcode OP_PRIZ or prize comment)
+        if (recipientNorm === participant && msg.value > 0) {
+          if (opCode === OP_PRIZ || (comment && PRIZE_MAP[comment] !== undefined)) {
+            winTonNano = BigInt(msg.value);
+            winComment = comment || "prize";
+            if (comment && PRIZE_MAP[comment]) {
+              winAmount = PRIZE_MAP[comment];
             }
           }
         }
-      }
 
-      if (action.type === "contract_deploy" && details && !nftAddress) {
-        const opcode = Number(details.opcode);
-        if (opcode === 0x801a1fcc) {
-          const nftAddr = details.destination ? tryNormalizeAddress(details.destination) : null;
-          const collAddr = details.source ? tryNormalizeAddress(details.source) : null;
-
-          if (nftAddr && collAddr) {
-            nftAddress = nftAddr;
-            collectionAddress = collAddr;
-          }
-        }
-      }
-
-      const dest = details?.destination;
-      const src = details?.source;
-
-      const destNorm = dest ? tryNormalizeAddress(dest) : null;
-      const srcNorm = src ? tryNormalizeAddress(src) : null;
-
-      const value = details?.value ? BigInt(details.value) : 0n;
-
-      if (action.type === "ton_transfer") {
-        const comment = details?.comment?.trim().toLowerCase();
-        const prizeUsd = comment ? PRIZE_MAP[comment] : undefined;
-
-        // Win from contract
-        if (
-          srcNorm === this.contract &&
-          destNorm === participant &&
-          prizeUsd !== undefined &&
-          comment
-        ) {
-          winComment = comment;
-          winAmount = prizeUsd;
-          winTonNano = value;
-        }
-
-        // Referral from contract
-        if (
-          srcNorm === this.contract &&
-          destNorm !== participant &&
-          comment === "referral"
-        ) {
-          referralNano = value;
-          referralAddress = destNorm || null;
-        }
-
-        // Purchase to contract
-        if (
-          !purchaseRecorded &&
-          destNorm === this.contract &&
-          srcNorm === participant &&
-          value > 0n
-        ) {
-          buyAmount = Number(value) / 1e9;
-          buyCurrency = "TON";
-          purchaseRecorded = true;
-        }
-      }
-
-      // Handle jetton transfers
-      if (action.type === "jetton_transfer") {
-        const jettonDetails = details as any;
-        const amount = jettonDetails?.amount ? Number(jettonDetails.amount) : 0;
-        const decimals = jettonDetails?.decimals ?? 9;
-        const divisor = Math.pow(10, decimals);
-        const symbol = jettonDetails?.symbol || "JETTON";
-        const master = jettonDetails?.jetton_master;
-
-        // Win jetton from contract
-        const senderNorm = jettonDetails?.sender ? tryNormalizeAddress(jettonDetails.sender) : null;
-        const receiverNorm = jettonDetails?.receiver ? tryNormalizeAddress(jettonDetails.receiver) : null;
-
-        if (
-          senderNorm === this.contract &&
-          receiverNorm === participant &&
-          amount > 0
-        ) {
-          const comment = jettonDetails?.comment?.trim().toLowerCase();
-          const prizeUsd = comment ? PRIZE_MAP[comment] : undefined;
-
-          if (prizeUsd !== undefined && comment) {
-            winComment = comment;
-            winAmount = prizeUsd;
-          }
-        }
-
-        // Purchase with jetton
-        if (
-          !purchaseRecorded &&
-          receiverNorm === this.contract &&
-          senderNorm === participant &&
-          amount > 0
-        ) {
-          buyAmount = amount / divisor;
-          buyCurrency = symbol;
-          buyMasterAddress = master ? tryNormalizeAddress(master) : null;
-          purchaseRecorded = true;
+        // Check for referral payment (by opcode OP_REFF or comment)
+        if ((opCode === OP_REFF || comment === "referral") && msg.value > 0) {
+          referralAmount = msg.value / 1e9;
+          referralAddress = recipientNorm;
         }
       }
     }
 
-    // Build the lottery transaction with NFT data if found
     const result: LotteryTx = {
       participant,
-      nftAddress,      // Will be null if no NFT found
-      collectionAddress, // Will be null if no NFT found
-      nftIndex,         // Will be null if no NFT found
-      timestamp: trace.start_utime,
+      nftAddress: null,
+      collectionAddress: null,
+      nftIndex: null,
+      timestamp: tx.utime,
       txHash,
-      lt: trace.start_lt,
+      lt: String(tx.lt),
       isWin: winAmount > 0,
       winComment,
-      winAmount,
+      winAmount: winAmount || null,
       winJettonAmount: null,
       winJettonSymbol: null,
       winTonAmount: winTonNano ? Number(winTonNano) / 1e9 : null,
-      referralAmount: referralNano ? Number(referralNano) / 1e9 : null,
+      referralAmount,
       referralPercent:
-        buyAmount !== null && referralNano > 0n
-          ? Math.round((Number(referralNano) / 1e9 / buyAmount) * 10000) / 100
+        referralAmount !== null && referralAmount > 0
+          ? Math.round((referralAmount / buyAmount) * 10000) / 100
           : null,
       referralAddress,
       buyAmount,
       buyCurrency,
-      buyMasterAddress,
-      isFake: validation.isFake,
-      fakeReason: validation.fakeReason,
-      validationScore: validation.validationScore,
+      buyMasterAddress: null,
+      isFake: false,
+      fakeReason: null,
+      validationScore: 100,
     };
 
-    // Only return if there's a purchase or a win
-    if (purchaseRecorded || winAmount > 0) {
-      return result;
-    }
-
-    return null;
+    return result;
   }
 }
